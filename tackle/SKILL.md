@@ -660,7 +660,7 @@ if [ -z "$PR_NUMBER" ]; then
     --title "<title>" --body "<body>
 
 ---
-🤖 [Tackled](https://github.com/aleiby/claude-config/tree/master/skills/tackle) with [Claude Code](https://claude.com/claude-code)"
+🤖 [Tackled](https://github.com/aleiby/claude-skills/tree/main/tackle) with [Claude Code](https://claude.com/claude-code)"
   PR_URL=$(gh pr view --repo $ORG_REPO --json url --jq '.url')
   PR_NUMBER=$(gh pr view --repo $ORG_REPO --json number --jq '.number')
   IS_DRAFT=true
