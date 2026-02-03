@@ -1,0 +1,4 @@
+prefix: sk
+
+sync.mode: "dolt-native"
+
