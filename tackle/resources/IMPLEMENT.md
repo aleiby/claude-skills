@@ -260,9 +260,26 @@ git branch -D test-wip
    - Don't refactor beyond scope
    - Don't add features not requested
 
-4. **Don't break existing tests**:
+5. **Don't break existing tests**:
    - Run full test suite before considering implementation complete
    - Fix any regressions introduced
+
+6. **Never use `os.Executable()` for command paths in code that has unit tests**:
+   - During tests, `os.Executable()` returns the test binary (e.g., `web.test`)
+   - If your code executes this path with command arguments, it runs the test binary again
+   - This causes a **fork bomb**: the test binary doesn't understand the args, runs ALL tests again, recursively → 166k+ processes → OOM → system crash
+   - **Safe patterns:**
+     ```go
+     // SAFE - always use PATH lookup
+     gtPath := "gt"
+
+     // OR - guard against test binaries
+     gtPath := "gt"
+     if exe, err := os.Executable(); err == nil && !strings.HasSuffix(exe, ".test") {
+         gtPath = exe
+     }
+     ```
+   - **Even safer**: Mock command execution in tests rather than calling real handlers that execute external commands
 
 ### Commit Format
 
