@@ -264,22 +264,35 @@ git branch -D test-wip
    - Run full test suite before considering implementation complete
    - Fix any regressions introduced
 
-6. **Never use `os.Executable()` for command paths in code that has unit tests**:
-   - During tests, `os.Executable()` returns the test binary (e.g., `web.test`)
-   - If your code executes this path with command arguments, it runs the test binary again
-   - This causes a **fork bomb**: the test binary doesn't understand the args, runs ALL tests again, recursively → 166k+ processes → OOM → system crash
-   - **Safe patterns:**
-     ```go
-     // SAFE - always use PATH lookup
-     gtPath := "gt"
+6. **Fork bomb hazard: `os.Executable()` + tests**:
 
-     // OR - guard against test binaries
-     gtPath := "gt"
-     if exe, err := os.Executable(); err == nil && !strings.HasSuffix(exe, ".test") {
-         gtPath = exe
-     }
-     ```
-   - **Even safer**: Mock command execution in tests rather than calling real handlers that execute external commands
+   During tests, `os.Executable()` returns the test binary (e.g., `web.test`). If code executes this path with arguments, it runs the test binary again → recursive execution → 166k+ processes → OOM → system crash.
+
+   **Two ways to trigger this bomb:**
+
+   | Scenario | Who plants the bomb | Who detonates it |
+   |----------|---------------------|------------------|
+   | Writing new code | You add `os.Executable()` | Future tests that call this code |
+   | Adding tests | Previous code used `os.Executable()` | Your new tests trigger that code path |
+
+   **When writing code that executes commands:**
+   ```go
+   // SAFE - always use PATH lookup
+   gtPath := "gt"
+
+   // OR - guard against test binaries
+   gtPath := "gt"
+   if exe, err := os.Executable(); err == nil && !strings.HasSuffix(exe, ".test") {
+       gtPath = exe
+   }
+   ```
+
+   **When adding tests - CHECK FIRST:**
+   - Before writing tests that trigger command execution, grep for `os.Executable()` in the code path
+   - If found, either mock the execution or ensure the code has `.test` guards
+   - Tests for "blocked commands" or validation are safe; tests that trigger actual execution are dangerous
+
+   **Safest approach**: Mock command execution in tests rather than calling real handlers
 
 ### Commit Format
 
