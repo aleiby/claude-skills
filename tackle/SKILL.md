@@ -57,6 +57,28 @@ source "$SKILL_DIR/resources/scripts/report-problem.sh"
 
 **Why this matters:** Attempting to fix workflow problems mid-tackle often makes things worse. Problems reported to the mayor get fixed in the skill itself, helping all future runs.
 
+## Public Artifacts: No Bead IDs
+
+**NEVER include local bead IDs (hq-xxx, gt-xxx, -xxx) in:**
+- Commit messages
+- Branch names
+- PR titles or descriptions
+- Code comments
+
+These are internal tracking IDs meaningless to upstream maintainers. They pollute git history and confuse reviewers.
+
+**Use instead:**
+- Upstream GitHub issue numbers if they exist: `(#123)`
+- Descriptive text if no upstream issue: `fix(doctor): correct indentation`
+- Nothing at all - the description should stand alone
+
+**Where bead IDs ARE appropriate:**
+- Internal molecule/step notes
+- Local issue tracking commands (`bd update`, `bd show`)
+- Handoff messages between agents
+
+---
+
 ## Common Mistakes
 
 **Don't skip step resource files.** Even "simple" steps like record and reflect have scripts that handle edge cases:
@@ -706,6 +728,11 @@ Draft PR for <issue-id>:
   - Tests: PASSED
   - Isolation: PASSED (single concern)
   - Rebased: Yes, on upstream default branch
+
+## Pre-Submit Verification
+  - [ ] No bead IDs in commit messages
+  - [ ] No bead IDs in branch name
+  - [ ] No bead IDs in PR title/description
 
 Approve to check CI and mark PR ready for maintainer review.
 ```

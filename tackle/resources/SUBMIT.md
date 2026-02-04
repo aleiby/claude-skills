@@ -2,9 +2,15 @@
 
 Mark the draft PR as ready for review after gate-submit approval.
 
-> **IMPORTANT: Never reference local beads issue IDs (gt-xxx, hq-xxx) in upstream PRs.**
-> Local beads are internal tracking - they mean nothing to upstream maintainers.
-> Only reference GitHub issue numbers if they exist on the upstream repo.
+> **⚠️ CRITICAL: No Bead IDs in Public Artifacts**
+>
+> **NEVER include local bead IDs (hq-xxx, gt-xxx, -xxx) in:**
+> - PR titles or descriptions
+> - Commit messages
+> - Branch names
+>
+> These are internal tracking IDs meaningless to upstream maintainers.
+> Use upstream GitHub issue numbers (`#123`) if available, or omit entirely.
 
 ## Pre-Submit Checklist
 

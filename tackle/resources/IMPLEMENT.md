@@ -125,9 +125,9 @@ Use upstream and default branch (see SKILL.md "Detect Upstream"):
 git checkout -b <type>/<issue-id>-<description> $UPSTREAM_REF
 ```
 
-Branch naming: `<type>/<issue-id>-<short-description>`
+Branch naming: `<type>/<short-description>` or `<type>/<issue-number>-<short-description>`
 
-**Issue ID preference:** Use upstream issue number (e.g., `123`) if available, otherwise fall back to local beads ID (e.g., `hq-1234`). Upstream issue numbers are more meaningful in the PR context.
+**NEVER use local bead IDs (hq-xxx, gt-xxx) in branch names.** Use upstream issue numbers if available, or just a descriptive name.
 
 Types:
 - `fix/` - Bug fixes
@@ -138,18 +138,18 @@ Types:
 
 Examples:
 ```bash
-# With upstream issue
+# With upstream issue number
 git checkout -b fix/123-doctor-indent upstream/main
 
-# Without upstream issue (local beads ID)
-git checkout -b fix/hq-1234-doctor-indent upstream/main
+# Without upstream issue - use descriptive name only
+git checkout -b fix/doctor-indent upstream/main
 ```
 
 ### Update Molecule
 
 ```yaml
 phase: "implement"
-branch: "fix/hq-1234-doctor-indent"
+branch: "fix/123-doctor-indent"
 branch_base: "upstream/main"
 ```
 
@@ -243,15 +243,15 @@ git branch -D test-wip
 2. **Atomic commits**:
    - Each commit should be a logical unit
    - Conventional commit messages: `type(scope): description`
-   - Reference issue (prefer upstream issue number if available):
-     - With upstream issue: `fix(doctor): correct indentation (#123)`
-     - Without upstream issue: `fix(doctor): correct indentation (hq-1234)`
+   - Reference upstream issue number if available: `fix(doctor): correct indentation (#123)`
+   - **NEVER use local bead IDs (hq-xxx, gt-xxx) in commit messages** - they're meaningless to upstream maintainers
+   - If no upstream issue exists, omit the reference: `fix(doctor): correct indentation`
 
-3. **No tracking references in code**:
-   - NEVER add bead IDs, GitHub issue numbers, PR references, or tackle skill references in code comments
-   - No `// Fixed in #123`, `// See hq-1234`, `// PR #456`, `// Tackled`, etc.
+3. **No tracking references in code or commits**:
+   - NEVER add bead IDs in code comments, commit messages, branch names, or PR descriptions
+   - No `// Fixed in #123`, `// See hq-1234`, `// PR #456`, `// Tackled`, etc. in code
    - Code comments should explain *why*, not reference external tracking systems
-   - Tracking references belong in commit messages and PR descriptions only
+   - Upstream GitHub issue numbers (`#123`) are allowed in commit messages and PR descriptions
    - **Exception**: The "Tackled" footer in PR descriptions is required (see SUBMIT.md)
 
 4. **Stay focused**:
@@ -288,16 +288,18 @@ From cached research (stored in cache bead description, see PROJECT-RESEARCH sub
 commits:
   tense: "present"
   subject_max_length: 72
-  issue_reference_format: "(#xxx)"  # or "(hq-xxx)" if no upstream issue
+  issue_reference_format: "(#xxx)"  # upstream GitHub issue number only
 ```
+
+**NEVER use local bead IDs (hq-xxx, gt-xxx) in commit messages.**
 
 Examples:
 ```bash
-# With upstream issue number (preferred)
+# With upstream issue number
 git commit -m "fix(doctor): correct indentation in database check (#123)"
 
-# Without upstream issue (fallback to local beads ID)
-git commit -m "fix(doctor): correct indentation in database check (hq-1234)"
+# Without upstream issue - omit the reference entirely
+git commit -m "fix(doctor): correct indentation in database check"
 ```
 
 ### Progress Updates
