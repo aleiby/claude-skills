@@ -114,10 +114,10 @@ Use template if available, otherwise:
 - [x] Single concern (isolation verified)
 
 ---
-🤖 [Tackled](https://github.com/aleiby/claude-skills/tree/main/tackle) with [Claude Code](https://claude.com/claude-code)
+🤖 [Tackled](https://github.com/aleiby/claude-skills/tree/main/tackle) with [Claude Code](https://claude.com/claude-code) (by <agent-name>)
 ```
 
-**⚠️ REQUIRED:** Use this "Tackled" footer instead of the default "Generated with Claude Code" or "Created with Claude Code". The Tackled link identifies PRs created through the tackle workflow.
+**⚠️ REQUIRED:** Use this "Tackled" footer instead of the default "Generated with Claude Code" or "Created with Claude Code". The Tackled link identifies PRs created through the tackle workflow. Replace `<agent-name>` with `$(basename "$BD_ACTOR")` — the agent's short name without rig prefix (e.g., "Naomi" not "gastown/naomi").
 
 ## Update Molecule
 

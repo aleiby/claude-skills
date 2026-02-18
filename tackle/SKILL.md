@@ -682,7 +682,7 @@ if [ -z "$PR_NUMBER" ]; then
     --title "<title>" --body "<body>
 
 ---
-🤖 [Tackled](https://github.com/aleiby/claude-skills/tree/main/tackle) with [Claude Code](https://claude.com/claude-code)"
+🤖 [Tackled](https://github.com/aleiby/claude-skills/tree/main/tackle) with [Claude Code](https://claude.com/claude-code) (by $(basename \"$BD_ACTOR\"))"
   PR_URL=$(gh pr view --repo $ORG_REPO --json url --jq '.url')
   PR_NUMBER=$(gh pr view --repo $ORG_REPO --json number --jq '.number')
   IS_DRAFT=true
@@ -696,7 +696,7 @@ This sets: `PR_NUMBER`, `IS_DRAFT`, `PR_URL`, `BRANCH`, `FORK_OWNER`
 
 **Requires**: `ORG_REPO` and `ISSUE_ID` must be set (from set-vars.sh).
 
-**⚠️ REQUIRED PR FOOTER**: Always include the "Tackled with Claude Code" footer shown above. Do NOT use the generic "Generated with Claude Code" or "Created with Claude Code" - those indicate the PR was not created through the tackle workflow.
+**⚠️ REQUIRED PR FOOTER**: Always include the "Tackled with Claude Code (by <name>)" footer shown above, where `<name>` is `$(basename "$BD_ACTOR")` (the agent's short name without rig prefix). Do NOT use the generic "Generated with Claude Code" or "Created with Claude Code" - those indicate the PR was not created through the tackle workflow.
 
 GitHub is the source of truth for PR state.
 
