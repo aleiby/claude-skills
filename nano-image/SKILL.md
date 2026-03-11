@@ -31,7 +31,8 @@ user-invocable: true
 Requires a Gemini API key. The scripts check in order:
 1. `GEMINI_API_KEY_PAID_TIER1` env var (preferred — paid tier)
 2. `GEMINI_API_KEY` env var
-3. Same vars in `.env` files: `/Users/aleiby/openclaw/.env`, `$CWD/.env`, `~/.env`
+3. `NANO_IMAGE_ENV_FILE` env var pointing to a custom `.env` file
+4. `.env` in current directory, `~/.env`, `~/.nano-banana/.env`
 
 Get a key at https://aistudio.google.com/api-keys
 
@@ -43,16 +44,16 @@ Start it (runs in background):
 ```bash
 python3 ~/.claude/skills/nano-image/scripts/gallery_server.py \
   --port 8899 \
-  --dir ~/gt/skills/crew/aleiby/nano-image-output &
+  --dir ./nano-image-output &
 ```
 
 The gallery auto-polls every 3 seconds. New images animate in. Click to lightbox.
 
 ## Output Directory
 
-All generated images go to `~/gt/skills/crew/aleiby/nano-image-output/` by default.
-Always pass `--output-dir ~/gt/skills/crew/aleiby/nano-image-output` to scripts so
-images appear in the gallery. Override with `--output <path>` for specific locations.
+All generated images go to `./nano-image-output/` relative to the current working
+directory by default. Pass `--output-dir` to scripts to match the gallery server's
+`--dir`. Override with `--output <path>` for specific file locations.
 
 ## Step 1: Classify the Request
 
@@ -136,7 +137,7 @@ python3 ~/.claude/skills/nano-image/scripts/generate_image.py \
   --model flash \
   --aspect-ratio "16:9" \
   --resolution "1K" \
-  --output-dir ~/gt/skills/crew/aleiby/nano-image-output
+  --output-dir ./nano-image-output
 
 # Image editing (with reference)
 python3 ~/.claude/skills/nano-image/scripts/edit_image.py \
@@ -145,7 +146,7 @@ python3 ~/.claude/skills/nano-image/scripts/edit_image.py \
   --model flash \
   --aspect-ratio "16:9" \
   --resolution "1K" \
-  --output-dir ~/gt/skills/crew/aleiby/nano-image-output
+  --output-dir ./nano-image-output
 
 # Multi-image composition
 python3 ~/.claude/skills/nano-image/scripts/compose_images.py \
@@ -154,7 +155,7 @@ python3 ~/.claude/skills/nano-image/scripts/compose_images.py \
   --model pro \
   --aspect-ratio "16:9" \
   --resolution "2K" \
-  --output-dir ~/gt/skills/crew/aleiby/nano-image-output
+  --output-dir ./nano-image-output
 ```
 
 The scripts save the image and a `.meta.json` sidecar with full generation details.
@@ -217,7 +218,7 @@ python3 ~/.claude/skills/nano-image/scripts/batch_generate.py \
   --model flash \
   --aspect-ratio "1:1" \
   --resolution "1K" \
-  --output-dir ~/gt/skills/crew/aleiby/nano-image-output \
+  --output-dir ./nano-image-output \
   --label "logo-concepts"
 ```
 

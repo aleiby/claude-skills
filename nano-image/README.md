@@ -25,7 +25,15 @@ Set the key as an environment variable:
 export GEMINI_API_KEY="your-key-here"
 ```
 
-Or place it in a `.env` file. The scripts also check for `GEMINI_API_KEY_PAID_TIER1` (preferred if both exist).
+Or place it in a `.env` file (checked in: `$CWD/.env`, `~/.env`, `~/.nano-banana/.env`).
+
+The scripts also check for `GEMINI_API_KEY_PAID_TIER1` and prefer it over `GEMINI_API_KEY` when both exist.
+
+To use a `.env` file in a custom location:
+
+```bash
+export NANO_IMAGE_ENV_FILE="/path/to/your/.env"
+```
 
 ## Installation
 

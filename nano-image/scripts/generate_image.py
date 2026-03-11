@@ -41,12 +41,16 @@ def get_api_key():
 
     # Check common .env locations (paid tier key preferred)
     env_vars_to_find = ["GEMINI_API_KEY_PAID_TIER1", "GEMINI_API_KEY"]
-    for env_path in [
-        Path("/Users/aleiby/openclaw") / ".env",
+    env_paths = [
         Path.cwd() / ".env",
         Path.home() / ".env",
         Path.home() / ".nano-banana" / ".env",
-    ]:
+    ]
+    # Also check NANO_IMAGE_ENV_FILE if set (for custom .env locations)
+    custom_env = os.environ.get("NANO_IMAGE_ENV_FILE")
+    if custom_env:
+        env_paths.insert(0, Path(custom_env))
+    for env_path in env_paths:
         if env_path.exists():
             # Collect all matching keys from this file
             found = {}
