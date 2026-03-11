@@ -1,0 +1,21 @@
+{
+  "name": "Clean Modern",
+  "description": "Minimal, contemporary aesthetic with lots of whitespace",
+  "style": "flat, modern, minimal",
+  "palette": "neutral grays and whites with a single bold accent color",
+  "background": "clean white or very light gray",
+  "constraints": [
+    "generous whitespace",
+    "sharp clean edges",
+    "consistent visual weight",
+    "modern sans-serif typography feel"
+  ],
+  "negatives": [
+    "gradients",
+    "drop shadows",
+    "skeuomorphic textures",
+    "ornamental decoration",
+    "busy patterns",
+    "cluttered layout"
+  ]
+}

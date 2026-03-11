@@ -1,0 +1,22 @@
+{
+  "task_type": "concept",
+  "style": "flat",
+  "composition": "clean UI layout with clear visual hierarchy, generous whitespace",
+  "palette": "modern neutral with one accent color",
+  "background": "clean white or light gray",
+  "aspect_ratio": "16:9",
+  "resolution": "2K",
+  "constraints": [
+    "clear visual hierarchy",
+    "readable text at intended size",
+    "consistent spacing and alignment",
+    "professional, production-quality appearance"
+  ],
+  "negatives": [
+    "cluttered layout",
+    "inconsistent spacing",
+    "unreadable small text",
+    "heavy drop shadows",
+    "skeuomorphic textures"
+  ]
+}

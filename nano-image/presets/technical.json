@@ -1,0 +1,20 @@
+{
+  "name": "Technical",
+  "description": "Clean technical diagrams and documentation visuals",
+  "style": "flat technical, blueprint-like, precise",
+  "palette": "dark background with bright colored nodes, or white background with dark outlines",
+  "background": "solid white or dark navy",
+  "constraints": [
+    "all text must be legible and correctly spelled",
+    "clear visual hierarchy between primary and secondary elements",
+    "consistent line weights",
+    "grid-aligned layout"
+  ],
+  "negatives": [
+    "photorealistic textures",
+    "decorative elements",
+    "organic shapes where geometric is expected",
+    "overlapping labels",
+    "artistic flourishes"
+  ]
+}

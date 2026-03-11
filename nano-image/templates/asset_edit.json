@@ -1,0 +1,19 @@
+{
+  "task_type": "edit",
+  "style": "",
+  "composition": "preserve original composition unless explicitly changing it",
+  "palette": "",
+  "background": "",
+  "aspect_ratio": "",
+  "resolution": "2K",
+  "constraints": [
+    "preserve unmodified areas of the original image",
+    "maintain consistent style with the original",
+    "edited regions should blend naturally"
+  ],
+  "negatives": [
+    "visible edit boundaries",
+    "style inconsistency between edited and original regions",
+    "unintended changes to areas outside the edit target"
+  ]
+}

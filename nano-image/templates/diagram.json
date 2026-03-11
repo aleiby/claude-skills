@@ -1,0 +1,24 @@
+{
+  "task_type": "diagram",
+  "style": "flat",
+  "composition": "clear flow direction, well-spaced nodes, labeled connections",
+  "palette": "limited palette, high contrast between elements and background",
+  "background": "white or very light neutral",
+  "aspect_ratio": "16:9",
+  "resolution": "2K",
+  "constraints": [
+    "all text must be legible",
+    "clear directional flow (top-to-bottom or left-to-right)",
+    "consistent node shapes and sizes",
+    "labeled arrows or connections",
+    "no more than 7-10 nodes for readability"
+  ],
+  "negatives": [
+    "photorealistic textures",
+    "gradients",
+    "decorative elements",
+    "3D effects",
+    "overlapping labels",
+    "crossing connection lines"
+  ]
+}

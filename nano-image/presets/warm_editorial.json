@@ -1,0 +1,20 @@
+{
+  "name": "Warm Editorial",
+  "description": "Rich, warm tones with editorial illustration quality",
+  "style": "editorial illustration, rich detail, warm lighting",
+  "palette": "warm ambers, deep browns, muted golds, cream highlights",
+  "background": "warm textured or atmospheric",
+  "constraints": [
+    "narrative feel — like a magazine illustration",
+    "rich detail in focal areas",
+    "atmospheric depth",
+    "warm color temperature throughout"
+  ],
+  "negatives": [
+    "cold blue tones",
+    "flat lifeless lighting",
+    "sterile clinical look",
+    "pure white backgrounds",
+    "harsh shadows"
+  ]
+}
