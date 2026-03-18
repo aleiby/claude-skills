@@ -91,6 +91,7 @@ def get_bfl_key():
 BFL_ENDPOINTS = {
     "max": "flux-2-max",
     "pro": "flux-2-pro-preview",
+    "dev": "flux-dev",
     "flex": "flux-2-flex",
     "klein": "flux-2-klein-4b",
 }

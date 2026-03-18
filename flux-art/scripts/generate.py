@@ -364,17 +364,47 @@ def generate_fal(prompt, input_image=None, image_size="landscape_4_3",
 def generate(prompt, input_image=None, image_size="landscape_4_3",
              tier="pro", guidance_scale=None, num_inference_steps=None,
              seed=None, num_images=1, output_format="png",
-             output_path=None, output_dir=None, label=None):
+             output_path=None, output_dir=None, label=None, backend=None):
     """Route to local server, BFL API, or fal.ai.
 
-    Priority:
+    backend=None (auto):
       1. Local server (FLUX_LOCAL_URL) for fast/dev tiers
       2. BFL API (BFL_API_KEY) for all tiers (max only available here)
       3. fal.ai (FAL_KEY) as fallback
+    backend="local"/"bfl"/"fal": force specific backend.
     """
     local_url = get_local_url()
     bfl_key = get_bfl_key()
 
+    if backend == "local":
+        if not local_url:
+            print("ERROR: --backend local but FLUX_LOCAL_URL not set.", file=sys.stderr)
+            sys.exit(1)
+        return generate_local(
+            local_url, prompt, input_image=input_image, image_size=image_size,
+            tier=tier, guidance_scale=guidance_scale,
+            num_inference_steps=num_inference_steps, seed=seed,
+            num_images=num_images, output_format=output_format,
+            output_path=output_path, output_dir=output_dir, label=label,
+        )
+
+    if backend == "bfl":
+        return generate_bfl(
+            prompt, input_image=input_image, image_size=image_size,
+            tier=tier, seed=seed, output_format=output_format,
+            output_path=output_path, output_dir=output_dir, label=label,
+        )
+
+    if backend == "fal":
+        return generate_fal(
+            prompt, input_image=input_image, image_size=image_size,
+            tier=tier, guidance_scale=guidance_scale,
+            num_inference_steps=num_inference_steps, seed=seed,
+            num_images=num_images, output_format=output_format,
+            output_path=output_path, output_dir=output_dir, label=label,
+        )
+
+    # Auto routing
     # Local server handles fast/dev tiers
     if local_url and tier in ("fast", "dev"):
         return generate_local(
@@ -424,6 +454,8 @@ def main():
     parser.add_argument("--output", default=None, help="Specific output file path")
     parser.add_argument("--output-dir", default=None, help="Output directory")
     parser.add_argument("--label", default=None, help="Filename prefix label")
+    parser.add_argument("--backend", default=None, choices=["local", "bfl", "fal"],
+                        help="Force backend: local (4090), bfl (api.bfl.ai), fal (fal.ai)")
 
     args = parser.parse_args()
     generate(
@@ -439,6 +471,7 @@ def main():
         output_path=args.output,
         output_dir=args.output_dir,
         label=args.label,
+        backend=args.backend,
     )
 
 
