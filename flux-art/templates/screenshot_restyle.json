@@ -1,0 +1,11 @@
+{
+  "mode": "restyle",
+  "image_size": "landscape_16_9",
+  "strength": 0.85,
+  "control_strength": 1.0,
+  "guidance_scale": 3.5,
+  "num_inference_steps": 28,
+  "output_format": "png",
+  "style_defaults": "polished concept art rendering, dramatic volumetric lighting, rich painterly atmosphere",
+  "composition_note": "Preserve original screenshot composition and spatial layout. Transform rendering style while maintaining recognizable scene structure."
+}

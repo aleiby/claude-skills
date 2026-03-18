@@ -1,0 +1,9 @@
+{
+  "mode": "concept",
+  "aspect_ratio": "16:9",
+  "guidance_scale": 3.5,
+  "output_format": "png",
+  "num_images": 1,
+  "style_defaults": "painterly concept art with dramatic lighting and atmospheric depth",
+  "composition_defaults": "strong focal point, atmospheric depth, balanced composition with clear silhouettes"
+}

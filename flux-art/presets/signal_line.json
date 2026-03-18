@@ -1,0 +1,18 @@
+{
+  "name": "Signal Line",
+  "description": "Dieselpunk industrial aesthetic for the Signal Line game world",
+  "style_keywords": "dieselpunk, art-deco industrial, parametric design, blueprint diesel, painterly concept art, chrome and streamlined steel",
+  "palette": {
+    "steel_blue": "#2B3A42",
+    "warm_amber": "#C4842D",
+    "teal_signal": "#5B8FA8",
+    "golden_highlight": "#D4A843",
+    "deep_navy": "#1A1E2E",
+    "dusty_violet": "#6B5B73",
+    "ghost_green": "#7FB89E",
+    "rust_orange": "#A85B3C"
+  },
+  "atmosphere": "volumetric fog, dust motes, industrial atmosphere, dramatic directional lighting with distinct mechanical vs spectral light",
+  "subjects": "diesel-electric locomotives, modular railcars, art-deco silhouettes, anthropomorphic moth characters, signal towers, bioluminescent bloomstorm",
+  "style_guide": "Flat palette-indexed materials with detail from panel lines, rivets, decals, and grime. Art-deco chrome and streamlined steel silhouettes. Strong typography in diegetic signage. Radiance-cascade lighting with clean directional mechanical light, soft pulsing organic ghost light, and reactive bioluminescent bloomstorm ambient. Isometric high three-quarter camera angle for readability."
+}
