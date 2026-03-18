@@ -82,8 +82,10 @@ def generate_local(local_url, prompt, input_image=None, image_size="landscape_4_
     if num_inference_steps is not None:
         body["num_inference_steps"] = num_inference_steps
     if input_image:
-        body["input_image_base64"] = encode_image_base64(input_image)
-        print(f"Encoded input image: {input_image}", file=sys.stderr)
+        # Accept single path or list; local server only supports one image
+        img_path = input_image[0] if isinstance(input_image, list) else input_image
+        body["input_image_base64"] = encode_image_base64(img_path)
+        print(f"Encoded input image: {img_path}", file=sys.stderr)
 
     actual_tier = "dev" if tier == "pro" else tier
     print(f"Calling local server ({actual_tier} tier)...", file=sys.stderr)
