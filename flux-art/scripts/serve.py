@@ -277,6 +277,66 @@ def create_app(output_dir):
             "available_tiers": list(MODEL_IDS.keys()),
         }
 
+    @app.get("/gpu")
+    def gpu_info():
+        """Return GPU memory usage and process info."""
+        import torch
+        import subprocess
+
+        info = {"gpus": [], "processes": []}
+
+        # torch CUDA memory stats
+        if torch.cuda.is_available():
+            for i in range(torch.cuda.device_count()):
+                props = torch.cuda.get_device_properties(i)
+                mem = torch.cuda.memory_stats(i) if torch.cuda.memory_allocated(i) > 0 else {}
+                info["gpus"].append({
+                    "index": i,
+                    "name": props.name,
+                    "total_mb": round(props.total_mem / 1024**2),
+                    "allocated_mb": round(torch.cuda.memory_allocated(i) / 1024**2),
+                    "reserved_mb": round(torch.cuda.memory_reserved(i) / 1024**2),
+                    "free_mb": round((props.total_mem - torch.cuda.memory_reserved(i)) / 1024**2),
+                })
+
+        # nvidia-smi process list
+        try:
+            result = subprocess.run(
+                ["nvidia-smi", "--query-compute-apps=pid,used_gpu_memory,process_name",
+                 "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, timeout=5,
+            )
+            for line in result.stdout.strip().split("\n"):
+                if line.strip():
+                    parts = [p.strip() for p in line.split(",")]
+                    if len(parts) >= 3:
+                        info["processes"].append({
+                            "pid": int(parts[0]),
+                            "gpu_memory_mb": int(parts[1]),
+                            "name": parts[2],
+                        })
+        except Exception:
+            pass
+
+        return info
+
+    @app.post("/clear-cache")
+    def clear_cache():
+        """Clear PyTorch CUDA cache to reclaim fragmented memory."""
+        import torch
+        import gc
+
+        before = torch.cuda.memory_reserved(0) / 1024**2 if torch.cuda.is_available() else 0
+        gc.collect()
+        torch.cuda.empty_cache()
+        after = torch.cuda.memory_reserved(0) / 1024**2 if torch.cuda.is_available() else 0
+
+        return {
+            "reserved_before_mb": round(before),
+            "reserved_after_mb": round(after),
+            "freed_mb": round(before - after),
+        }
+
     return app
 
 
