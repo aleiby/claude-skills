@@ -2,8 +2,8 @@
 name: flux-art
 description: |
   Flux image generation for concept art and screenshot restyling.
-  Uses FLUX.2 via BFL API (Pro/Max), local inference (Klein 4B on RTX 4090),
-  or fal.ai as fallback. FLUX.1 Control LoRA Canny for structure-preserving transforms.
+  Uses FLUX.2 via BFL API (Pro/Max/Kontext), local inference (Klein 4B on RTX 4090),
+  mflux on Mac (Klein 4B/9B via MLX), or fal.ai as fallback.
 
   INVOKE THIS SKILL when user requests Flux-specific image work:
   - "flux art", "generate with flux", "flux concept art"
@@ -38,12 +38,22 @@ Get a key at https://dashboard.bfl.ai
 1. `FAL_KEY` env var
 2. `.env` in current directory, `~/.env`
 
-### Local Server
+### Local Server (RTX 4090)
 
-Set `FLUX_LOCAL_URL` to route fast/dev tiers to a local GPU:
+Set `FLUX_LOCAL_URL` to route fast tier to the 4090:
 ```bash
-export FLUX_LOCAL_URL=http://192.168.1.100:8190
+export FLUX_LOCAL_URL=http://192.168.5.150:8190
 ```
+
+### Local Mac (mflux / MLX)
+
+Klein 4B/9B run natively on Apple Silicon via mflux:
+```bash
+uv tool install --python 3.12 mflux
+mac bash -c 'source ~/.zshrc && mflux-generate-flux2 --model flux2-klein-4b ...'
+```
+
+Requires `HF_TOKEN` in `~/.zshrc` for gated models (Klein 9B, Dev).
 
 ## Backend Routing
 
@@ -51,17 +61,21 @@ generate.py auto-routes based on tier and available credentials:
 
 | Tier | Auto route | Notes |
 |------|-----------|-------|
-| `fast` | Local server if `FLUX_LOCAL_URL` set, else BFL API, else fal.ai | Klein 4B, ~2s local |
-| `dev` | Local server if `FLUX_LOCAL_URL` set, else BFL API, else fal.ai | 32B, needs CPU offload locally |
+| `fast` | Local server if `FLUX_LOCAL_URL` set, else BFL API, else fal.ai | Klein 4B, ~2s on 4090 |
+| `dev` | BFL API (local 4090 OOMs with 32B) | 32B, ~15s via API |
 | `pro` | BFL API if `BFL_API_KEY` set, else fal.ai | Production quality |
 | `max` | BFL API only | Highest quality, best photorealism |
+| `kontext-pro` | BFL API | Targeted local edits (limited effectiveness) |
+| `kontext-max` | BFL API | Better prompt adherence for edits |
 
 Override with `--backend local|bfl|fal` to force a specific backend.
 
 ## Gallery
 
 Shares the nano-image gallery at **http://localhost:8899**. All output goes to
-`./nano-image-output/` with `.meta.json` sidecars tagged `model_tier: "flux"`.
+`./nano-image-output/`. The gallery reads metadata from:
+1. `.meta.json` sidecar files (flux-art generate.py output)
+2. Embedded PNG metadata (mflux EXIF UserComment — automatic, no sidecar needed)
 
 Start the gallery (if not already running):
 ```bash
@@ -87,6 +101,11 @@ Every request falls into one of four modes:
 | `composite` | Combine elements from multiple images | generate.py --input img1 img2 ... | Multi-reference (up to 4 Klein, 8 Pro/Max) |
 | `restyle` | Structure-preserving screenshot beautification | restyle.py | FLUX.1 Control LoRA Canny |
 
+**Compositing limitations**: Multi-reference character compositing is unreliable
+across all FLUX models. Characters from reference sheets are often ignored or
+poorly integrated. Best approach: describe all characters in the text prompt
+from scratch, or use Nano Banana (Gemini) for targeted edits like fixing details.
+
 Classify the request BEFORE doing anything else.
 
 ### Model Tiers (generate.py --tier)
@@ -97,6 +116,8 @@ Classify the request BEFORE doing anything else.
 | `pro` (default) | High | ~$0.03/MP | Production quality, good prompt adherence |
 | `dev` | Good | ~$0.012/MP | Full parameter control (guidance, steps, num_images) |
 | `fast` | Draft | ~$0.014/MP or free local | Exploration, iteration, batch generation |
+| `kontext-pro` | Targeted edits | varies | Local edits to specific elements |
+| `kontext-max` | Better targeted edits | varies | Better prompt adherence for edits |
 
 Use `--tier fast` when brainstorming or exploring. Use `--tier max` for final output.
 
@@ -118,7 +139,7 @@ Build a structured spec, then convert to a rich narrative prompt:
   "prompt": "detailed scene description using positive-only language",
   "input_images": ["path1.png", "path2.png"],
   "image_size": "landscape_16_9",
-  "tier": "max|pro|fast|dev",
+  "tier": "max|pro|fast|dev|kontext-pro|kontext-max",
   "backend": "auto|local|bfl|fal",
   "label": "descriptive-filename-prefix"
 }
@@ -160,7 +181,7 @@ python3 ~/.claude/skills/flux-art/scripts/generate.py \
   --label "concept-train"
 ```
 
-### Fast exploration (Klein, sub-second on local GPU)
+### Fast exploration (Klein, ~2s on 4090)
 ```bash
 python3 ~/.claude/skills/flux-art/scripts/generate.py \
   --prompt "detailed scene description" \
@@ -201,14 +222,40 @@ python3 ~/.claude/skills/flux-art/scripts/generate.py \
 
 Klein supports up to 4 input images, Pro/Max up to 8.
 
+### Targeted edits with Kontext
+```bash
+python3 ~/.claude/skills/flux-art/scripts/generate.py \
+  --prompt "Change the character's coat from brown to green" \
+  --input /path/to/scene.png \
+  --tier kontext-pro \
+  --output-dir ./nano-image-output \
+  --label "edit-coat"
+```
+
+Note: Kontext works best for simple color/texture changes. It struggles with
+small elements, character additions/removals, and complex edits at low resolution.
+
 ### Force a specific backend
 ```bash
 # Force BFL API even for fast tier (compare against local)
 --backend bfl --tier fast
 
-# Force local server for dev tier
---backend local --tier dev
+# Force local server
+--backend local --tier fast
 ```
+
+### Mac local generation (mflux / MLX)
+```bash
+mac bash -c 'source ~/.zshrc && mflux-generate-flux2 \
+  --model flux2-klein-9b --quantize 8 \
+  --prompt "detailed scene description" \
+  --width 1024 --height 576 --steps 4 --guidance 1.0 \
+  --output /Users/aleiby/projects/signal-line/nano-image-output/my-image.png \
+  --metadata'
+```
+
+mflux embeds full metadata in the PNG — the gallery reads it automatically.
+Use absolute paths (not `~/`) for `--output` to avoid OrbStack path issues.
 
 ### Restyle mode (screenshot → concept art)
 ```bash
@@ -275,49 +322,30 @@ When the user asks to revise an existing image:
 5. For multi-reference compositing, use `--input img1.png img2.png` with a prompt
    describing which elements to take from each
 6. For regeneration with a modified prompt, use `generate.py` without `--input`
+7. For targeted edits (color changes, simple modifications), try Nano Banana (Gemini)
+   which has better instruction-following for surgical changes
 
-## Local Inference (GPU Server)
+## Local Inference — RTX 4090 (serve.py)
 
-Instead of the BFL/fal.ai APIs, you can run FLUX.2 on a local GPU (e.g., RTX 4090).
-The `serve.py` script runs a lightweight inference server that the client scripts
-call over the network.
+The `serve.py` script runs a lightweight inference server on a GPU machine.
 
 ### Setup (on the GPU machine)
 
 ```bash
-# Install dependencies
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
 pip install git+https://github.com/huggingface/diffusers.git
 pip install transformers accelerate sentencepiece protobuf
 pip install fastapi uvicorn pillow
 
-# Start server (Klein 4B preloaded via Flux2KleinPipeline)
 python3 ~/.claude/skills/flux-art/scripts/serve.py --port 8190
 ```
 
-**Important**: Requires latest diffusers from git for `Flux2KleinPipeline` support.
+**Important**: Requires latest diffusers from git for `Flux2KleinPipeline`.
+Uses `Flux2Pipeline` for dev tier (NOT `FluxPipeline` which is FLUX.1).
 
-### Client configuration
-
-Set `FLUX_LOCAL_URL` on the machine running the flux-art scripts:
-
-```bash
-export FLUX_LOCAL_URL=http://192.168.1.100:8190   # your GPU machine's IP
-```
-
-Or add to `.env`:
-```
-FLUX_LOCAL_URL=http://192.168.1.100:8190
-```
-
-### Local tier mapping
-
-| --tier | Local model | Pipeline | VRAM | Speed (1024x576) |
-|--------|-------------|----------|------|-------------------|
-| `fast` | Klein 4B distilled | Flux2KleinPipeline | ~15 GB | ~2 seconds |
-| `dev` | Dev 32B (CPU offload) | FluxPipeline | ~15 GB GPU + 45 GB RAM | ~30-60 seconds |
-| `pro` | Routes to BFL API | — | — | ~10 seconds |
-| `max` | Routes to BFL API | — | — | ~15 seconds |
+### Pipeline classes
+- Klein 4B: `Flux2KleinPipeline` (~15GB VRAM)
+- Dev 32B: `Flux2Pipeline` — **does NOT work on 24GB cards** (OOMs even with CPU offload)
 
 ### Diagnostic endpoints
 
@@ -326,12 +354,48 @@ FLUX_LOCAL_URL=http://192.168.1.100:8190
 | `/health` | GET | Server status and loaded models |
 | `/gpu` | GET | VRAM usage (allocated/reserved/free) and process list |
 | `/clear-cache` | POST | Reclaim fragmented VRAM via gc + empty_cache |
+| `/unload?tier=fast` | POST | Unload a specific model to free memory |
+| `/unload` | POST | Unload all models |
 
-### Health check
+## Local Inference — Mac (mflux / MLX)
+
+Klein 4B and 9B run natively on Apple Silicon via mflux (MLX).
+
+### Setup
 
 ```bash
-curl http://192.168.1.100:8190/health
+uv tool install --python 3.12 mflux
 ```
+
+Requires `HF_TOKEN` in `~/.zshrc` for gated models.
+
+### Supported models
+
+| Model | Command | Quantize | Time (M4 Max 128GB) |
+|-------|---------|----------|---------------------|
+| Klein 4B | `mflux-generate-flux2 --model flux2-klein-4b` | 4 or 8 | ~7-8s |
+| Klein 9B | `mflux-generate-flux2 --model flux2-klein-9b` | 8 | ~16s |
+| Dev 32B | Not yet supported in mflux | — | — |
+
+Use `--metadata` to embed generation info in the PNG (gallery reads it automatically).
+
+### Important notes
+- Use `mflux-generate-flux2` (not `mflux-generate` which is FLUX.1)
+- Use absolute paths for `--output` (not `~/`)
+- Run via `mac bash -c 'source ~/.zshrc && mflux-generate-flux2 ...'`
+
+## Performance Summary
+
+| Backend | Model | Time (1024x576) | Cost |
+|---------|-------|-----------------|------|
+| 4090 local | Klein 4B (bf16) | ~2s | Free |
+| Mac local | Klein 4B (q8) | ~8s | Free |
+| Mac local | Klein 4B (q4) | ~7s | Free |
+| Mac local | Klein 9B (q8) | ~16s | Free |
+| BFL API | Klein 4B | ~7s | ~$0.01 |
+| BFL API | Dev 32B | ~15s | ~$0.01 |
+| BFL API | Pro | ~10s | ~$0.02 |
+| BFL API | Max | ~15s | ~$0.03 |
 
 ## Pricing
 
@@ -343,6 +407,8 @@ curl http://192.168.1.100:8190/health
 | Pro | `flux-2-pro-preview` | ~$0.03/megapixel |
 | Dev | `flux-dev` | ~$0.012/megapixel |
 | Fast (Klein) | `flux-2-klein-4b` | ~$0.014/megapixel |
+| Kontext Pro | `flux-kontext-pro` | varies |
+| Kontext Max | `flux-kontext-max` | varies |
 
 ### fal.ai API (fallback)
 
@@ -355,4 +421,4 @@ curl http://192.168.1.100:8190/health
 
 ### Local inference
 
-Effectively free (electricity only). Klein 4B: ~30 images/minute on RTX 4090.
+Free (electricity only).
