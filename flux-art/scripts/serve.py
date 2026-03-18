@@ -297,10 +297,10 @@ def create_app(output_dir):
                 info["gpus"].append({
                     "index": i,
                     "name": props.name,
-                    "total_mb": round(props.total_mem / 1024**2),
+                    "total_mb": round(props.total_memory / 1024**2),
                     "allocated_mb": round(torch.cuda.memory_allocated(i) / 1024**2),
                     "reserved_mb": round(torch.cuda.memory_reserved(i) / 1024**2),
-                    "free_mb": round((props.total_mem - torch.cuda.memory_reserved(i)) / 1024**2),
+                    "free_mb": round((props.total_memory - torch.cuda.memory_reserved(i)) / 1024**2),
                 })
 
         # nvidia-smi process list
