@@ -126,6 +126,10 @@ def load_model(tier):
     pipe = FluxPipeline.from_pretrained(
         model_id,
         torch_dtype=torch.bfloat16,
+        text_encoder_2=None,
+        tokenizer_2=None,
+        feature_extractor=None,
+        image_encoder=None,
     )
     pipe.to("cuda")
 
