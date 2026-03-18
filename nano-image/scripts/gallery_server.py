@@ -92,6 +92,14 @@ GALLERY_HTML = """<!DOCTYPE html>
     line-height: 1.6;
     color: #999;
   }
+  .card .id-label {
+    font-family: 'SF Mono', 'Consolas', monospace;
+    font-size: 15px;
+    font-weight: 600;
+    color: #f0c040;
+    margin-bottom: 6px;
+    letter-spacing: 0.3px;
+  }
   .card .meta .prompt {
     color: #ccc;
     font-size: 14px;
@@ -113,7 +121,10 @@ GALLERY_HTML = """<!DOCTYPE html>
     font-size: 12px;
     color: #888;
   }
+  .card .meta .tag.max { color: #f040f0; background: #2a0a2a; }
   .card .meta .tag.pro { color: #f0a020; background: #2a1f0a; }
+  .card .meta .tag.dev { color: #40d080; background: #0a2a1a; }
+  .card .meta .tag.fast { color: #20c0c0; background: #0a2a2a; }
   .card .meta .tag.flash { color: #20a0f0; background: #0a1a2a; }
   .empty {
     text-align: center;
@@ -210,7 +221,6 @@ async function poll() {
         const card = document.createElement('div');
         card.className = 'card' + (isNew ? ' new' : '');
 
-        const tierClass = img.model_tier === 'pro' ? 'pro' : 'flash';
         const prompt = img.prompt || 'No prompt recorded';
         const time = img.timestamp ? formatTime(img.timestamp) : '';
         const size = img.file_size_bytes ? formatSize(img.file_size_bytes) : '';
@@ -218,13 +228,33 @@ async function poll() {
         const ar = img.aspect_ratio || '';
         const mode = img.mode || 'generate';
 
+        // Model display: prefer specific model name, fall back to tier
+        const model = img.model || img.model_tier || 'unknown';
+        // Color coding by model family
+        let tagClass = 'flash';
+        if (model.includes('max')) tagClass = 'max';
+        else if (model.includes('pro') || model.includes('kontext')) tagClass = 'pro';
+        else if (model.includes('dev')) tagClass = 'dev';
+        else if (model.includes('fast') || model.includes('klein')) tagClass = 'fast';
+        else if (img.model_tier === 'flux') tagClass = 'pro';
+
+        // Show if it's local
+        const isLocal = (img.endpoint || '').startsWith('local:');
+        const modelLabel = model + (isLocal ? ' (local)' : '');
+
+        // Build short ID from filename: strip timestamp, keep label + variant
+        const shortId = img.file.replace(/\\.png$/i, '')
+          .replace(/^(.*?)-\\d{8}-\\d{6}-/, '$1-')
+          .replace(/^(.*?)-\\d{8}-\\d{6}$/, '$1');
+
         card.innerHTML = `
           <img src="/images/${encodeURIComponent(img.file)}" loading="lazy"
                onclick="openLightbox(this.src)" alt="${prompt.substring(0, 80)}">
           <div class="meta">
+            <div class="id-label">${shortId}</div>
             <div class="prompt">${prompt.replace(/</g, '&lt;')}</div>
             <div class="details">
-              <span class="tag ${tierClass}">${img.model_tier || 'flash'}</span>
+              <span class="tag ${tagClass}">${modelLabel}</span>
               ${mode !== 'generate' ? `<span class="tag">${mode}</span>` : ''}
               ${ar ? `<span class="tag">${ar}</span>` : ''}
               ${res ? `<span class="tag">${res}</span>` : ''}
@@ -265,6 +295,16 @@ class GalleryHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(GALLERY_HTML.encode())
 
+        elif self.path == '/refboard' or self.path == '/refboard/':
+            refboard_path = Path(self.image_dir) / 'refboard' / 'index.html'
+            if refboard_path.exists():
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/html; charset=utf-8')
+                self.end_headers()
+                self.wfile.write(refboard_path.read_bytes())
+            else:
+                self.send_error(404, 'Reference board not found')
+
         elif self.path == '/api/images':
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
@@ -281,6 +321,7 @@ class GalleryHandler(SimpleHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header('Content-Type', mime)
                 self.send_header('Cache-Control', 'public, max-age=3600')
+                self.send_header('Access-Control-Allow-Origin', '*')
                 self.end_headers()
                 self.wfile.write(filepath.read_bytes())
             else:
@@ -307,7 +348,9 @@ class GalleryHandler(SimpleHTTPRequestHandler):
                         meta = json.loads(meta_path.read_text())
                         entry.update({
                             "prompt": meta.get("prompt", ""),
+                            "model": meta.get("model", ""),
                             "model_tier": meta.get("model_tier", ""),
+                            "endpoint": meta.get("endpoint", ""),
                             "timestamp": meta.get("timestamp", ""),
                             "aspect_ratio": meta.get("aspect_ratio", ""),
                             "resolution": meta.get("resolution", ""),
