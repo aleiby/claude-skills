@@ -341,7 +341,7 @@ class GalleryHandler(SimpleHTTPRequestHandler):
             if f.suffix.lower() in ('.png', '.jpg', '.jpeg', '.webp') and not f.name.endswith('.meta.json'):
                 entry = {"file": f.name}
 
-                # Load metadata sidecar if present
+                # Load metadata: sidecar first, then embedded PNG metadata
                 meta_path = f.with_suffix(f.suffix + '.meta.json')
                 if meta_path.exists():
                     try:
@@ -359,6 +359,14 @@ class GalleryHandler(SimpleHTTPRequestHandler):
                         })
                     except (json.JSONDecodeError, OSError):
                         pass
+                elif f.suffix.lower() == '.png':
+                    # Fallback: read embedded PNG metadata (EXIF UserComment)
+                    try:
+                        embedded = self._read_png_metadata(f)
+                        if embedded:
+                            entry.update(embedded)
+                    except Exception:
+                        pass
 
                 if "file_size_bytes" not in entry or not entry.get("file_size_bytes"):
                     entry["file_size_bytes"] = f.stat().st_size
@@ -366,6 +374,39 @@ class GalleryHandler(SimpleHTTPRequestHandler):
                 images.append(entry)
 
         return images
+
+    @staticmethod
+    def _read_png_metadata(filepath):
+        """Extract metadata from PNG EXIF UserComment (mflux format)."""
+        try:
+            from PIL import Image
+            img = Image.open(filepath)
+            exif_data = img.info.get("exif", b"")
+            if not exif_data:
+                return None
+            # mflux stores JSON in EXIF UserComment after "ASCII\x00\x00\x00"
+            exif_str = exif_data.decode("latin-1", errors="ignore")
+            json_start = exif_str.find('{"mflux_version"')
+            if json_start < 0:
+                json_start = exif_str.find('{"model"')
+            if json_start < 0:
+                return None
+            json_str = exif_str[json_start:].rstrip('\x00')
+            meta = json.loads(json_str)
+            model = meta.get("model", "")
+            quantize = meta.get("quantize")
+            if quantize:
+                model = f"{model}-q{quantize}"
+            return {
+                "prompt": meta.get("prompt", ""),
+                "model": model,
+                "model_tier": "flux",
+                "endpoint": "local:mflux-mac",
+                "timestamp": meta.get("created_at", ""),
+                "file_size_bytes": filepath.stat().st_size,
+            }
+        except Exception:
+            return None
 
 
 def main():
