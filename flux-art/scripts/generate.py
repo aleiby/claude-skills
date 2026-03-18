@@ -159,7 +159,11 @@ def generate_local(local_url, prompt, input_image=None, image_size="landscape_4_
 def generate_bfl(prompt, input_image=None, image_size="landscape_4_3",
                  tier="pro", seed=None, output_format="png",
                  output_path=None, output_dir=None, label=None):
-    """Generate via BFL API (api.bfl.ai)."""
+    """Generate via BFL API (api.bfl.ai).
+
+    input_image can be a single path string or a list of up to 4 paths
+    for multi-reference editing (Klein supports 4, Pro/Max support 8).
+    """
     resolved_size = resolve_image_size(image_size)
 
     # BFL uses width/height directly, not preset names
@@ -189,6 +193,14 @@ def generate_bfl(prompt, input_image=None, image_size="landscape_4_3",
     if output_format:
         body["output_format"] = output_format
 
+    # Input images — BFL uses input_image, input_image_2, input_image_3, input_image_4
+    if input_image:
+        images = input_image if isinstance(input_image, list) else [input_image]
+        for i, img_path in enumerate(images):
+            key = "input_image" if i == 0 else f"input_image_{i + 1}"
+            body[key] = f"data:image/png;base64,{encode_image_base64(img_path)}"
+            print(f"  Attached {key}: {img_path}", file=sys.stderr)
+
     print(f"Calling BFL API ({endpoint})...", file=sys.stderr)
     result = post_bfl(endpoint, body)
 
@@ -214,6 +226,11 @@ def generate_bfl(prompt, input_image=None, image_size="landscape_4_3",
 
     file_size = download_image(image_url, out_path)
 
+    input_images = None
+    if input_image:
+        input_images = input_image if isinstance(input_image, list) else [input_image]
+        input_images = [str(p) for p in input_images]
+
     meta = {
         "model": f"flux-2-{tier}",
         "model_tier": "flux",
@@ -222,6 +239,7 @@ def generate_bfl(prompt, input_image=None, image_size="landscape_4_3",
         "image_size": f"{width}x{height}",
         "seed": result.get("seed"),
         "output_format": output_format,
+        "input_images": input_images,
         "output_file": str(out_path),
         "file_size_bytes": file_size,
         "image_width": width,
@@ -436,8 +454,8 @@ def generate(prompt, input_image=None, image_size="landscape_4_3",
 def main():
     parser = argparse.ArgumentParser(description="Generate images with FLUX.2")
     parser.add_argument("--prompt", required=True, help="Image generation prompt")
-    parser.add_argument("--input", default=None,
-                        help="Input image path (enables editing mode)")
+    parser.add_argument("--input", default=None, nargs="+",
+                        help="Input image path(s) for editing/compositing (up to 4 for Klein, 8 for Pro/Max)")
     parser.add_argument("--image-size", default="landscape_4_3",
                         help="Size: preset name, aspect ratio (16:9), or WxH (1920x1080)")
     parser.add_argument("--tier", default="pro", choices=["max", "pro", "fast", "dev"],
