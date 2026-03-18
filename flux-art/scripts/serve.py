@@ -344,6 +344,35 @@ def create_app(output_dir):
             "freed_mb": round(before - after),
         }
 
+    @app.post("/unload")
+    def unload_model(tier: str = None):
+        """Unload model(s) to free GPU/CPU memory.
+
+        POST /unload?tier=fast  — unload just fast
+        POST /unload            — unload all models
+        """
+        import torch
+        import gc
+
+        unloaded = []
+        if tier:
+            if tier in _models:
+                del _models[tier]
+                unloaded.append(tier)
+        else:
+            for t in list(_models.keys()):
+                del _models[t]
+                unloaded.append(t)
+
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+        return {
+            "unloaded": unloaded,
+            "models_loaded": list(_models.keys()),
+        }
+
     return app
 
 
