@@ -136,7 +136,7 @@ def load_model(tier):
     # torch.compile with reduce-overhead uses CUDA graphs that pre-allocate
     # large buffers (~16GB), which won't fit on a 24GB card alongside the model.
     # Skip it to keep enough free VRAM for inference.
-    total_vram = torch.cuda.get_device_properties(0).total_mem / 1024**3
+    total_vram = torch.cuda.get_device_properties(0).total_memory / 1024**3
     if total_vram > 32:
         try:
             pipe.transformer = torch.compile(pipe.transformer, mode="reduce-overhead")
@@ -303,10 +303,10 @@ def create_app(output_dir):
                 info["gpus"].append({
                     "index": i,
                     "name": props.name,
-                    "total_mb": round(props.total_memory / 1024**2),
+                    "total_mb": round(props.total_memoryory / 1024**2),
                     "allocated_mb": round(torch.cuda.memory_allocated(i) / 1024**2),
                     "reserved_mb": round(torch.cuda.memory_reserved(i) / 1024**2),
-                    "free_mb": round((props.total_memory - torch.cuda.memory_reserved(i)) / 1024**2),
+                    "free_mb": round((props.total_memoryory - torch.cuda.memory_reserved(i)) / 1024**2),
                 })
 
         # nvidia-smi process list
