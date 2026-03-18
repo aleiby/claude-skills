@@ -65,6 +65,97 @@ def encode_image_base64(path):
 
 
 # --------------------------------------------------------------------------- #
+# BFL API helpers (api.bfl.ai — Black Forest Labs direct)
+# --------------------------------------------------------------------------- #
+
+def get_bfl_key():
+    """Read BFL_API_KEY from env or .env files."""
+    key = os.environ.get("BFL_API_KEY")
+    if key:
+        return key
+
+    env_paths = [Path.cwd() / ".env", Path.home() / ".env"]
+    for env_path in env_paths:
+        if env_path.exists():
+            for line in env_path.read_text().splitlines():
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if line.startswith("BFL_API_KEY="):
+                    val = line.split("=", 1)[1].strip().strip('"').strip("'")
+                    if val:
+                        return val
+    return None
+
+
+BFL_ENDPOINTS = {
+    "max": "flux-2-max",
+    "pro": "flux-2-pro-preview",
+    "flex": "flux-2-flex",
+    "klein": "flux-2-klein-4b",
+}
+
+
+def post_bfl(endpoint, body):
+    """POST to BFL API, poll for result, return parsed response."""
+    key = get_bfl_key()
+    if not key:
+        print("ERROR: No BFL API key found.", file=sys.stderr)
+        print("Set BFL_API_KEY via env or .env file.", file=sys.stderr)
+        print("Get a key at: https://dashboard.bfl.ai", file=sys.stderr)
+        sys.exit(1)
+
+    import time
+
+    url = f"https://api.bfl.ai/v1/{endpoint}"
+    data = json.dumps(body).encode()
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={
+            "Content-Type": "application/json",
+            "x-key": key,
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            submit_result = json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode() if e.fp else ""
+        print(f"ERROR: BFL API returned {e.code}: {error_body}", file=sys.stderr)
+        sys.exit(1)
+
+    polling_url = submit_result.get("polling_url")
+    if not polling_url:
+        # Some responses may return the result directly
+        return submit_result
+
+    # Poll for result
+    print(f"Polling for result...", file=sys.stderr)
+    for _ in range(120):  # up to 2 minutes
+        time.sleep(1)
+        poll_req = urllib.request.Request(
+            polling_url,
+            headers={"x-key": key},
+        )
+        with urllib.request.urlopen(poll_req, timeout=30) as resp:
+            poll_result = json.loads(resp.read())
+
+        status = poll_result.get("status")
+        if status == "Ready":
+            return poll_result
+        elif status in ("Error", "Failed"):
+            print(f"ERROR: BFL generation failed: {json.dumps(poll_result)}", file=sys.stderr)
+            sys.exit(1)
+        # else: Pending/Processing — keep polling
+
+    print("ERROR: BFL generation timed out after 120s", file=sys.stderr)
+    sys.exit(1)
+
+
+# --------------------------------------------------------------------------- #
 # fal.ai API helpers
 # --------------------------------------------------------------------------- #
 

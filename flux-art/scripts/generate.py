@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Generate images using FLUX.2 via fal.ai or a local inference server.
+"""Generate images using FLUX.2 via BFL API, fal.ai, or a local inference server.
 
 Handles text-to-image (no --input) and image editing (with --input).
-Supports Pro (quality), Fast/Klein (speed), and Dev (full control) tiers.
+Supports Max (best), Pro (production), Fast/Klein (speed), and Dev (full control) tiers.
 
 Routing:
-  FLUX_LOCAL_URL set → local server (fast/dev tiers, pro maps to dev)
-  FLUX_LOCAL_URL unset → fal.ai API (all tiers)
+  --tier max/pro  → BFL API (api.bfl.ai) if BFL_API_KEY set, else fal.ai
+  --tier fast/dev → FLUX_LOCAL_URL if set, else BFL API, else fal.ai
 """
 
 import argparse
@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from fal_utils import (
     get_local_url, post_local, encode_image_base64,
     ensure_fal_key, upload_image, download_image, save_metadata, make_output_path,
+    get_bfl_key, post_bfl, BFL_ENDPOINTS,
 )
 
 ENDPOINTS = {
@@ -152,6 +153,100 @@ def generate_local(local_url, prompt, input_image=None, image_size="landscape_4_
 
 
 # --------------------------------------------------------------------------- #
+# BFL API path (api.bfl.ai — Black Forest Labs direct)
+# --------------------------------------------------------------------------- #
+
+def generate_bfl(prompt, input_image=None, image_size="landscape_4_3",
+                 tier="pro", seed=None, output_format="png",
+                 output_path=None, output_dir=None, label=None):
+    """Generate via BFL API (api.bfl.ai)."""
+    resolved_size = resolve_image_size(image_size)
+
+    # BFL uses width/height directly, not preset names
+    if isinstance(resolved_size, dict):
+        width, height = resolved_size["width"], resolved_size["height"]
+    else:
+        size_map = {
+            "square_hd": (1024, 1024), "square": (512, 512),
+            "portrait_4_3": (768, 1024), "portrait_16_9": (576, 1024),
+            "landscape_4_3": (1024, 768), "landscape_16_9": (1024, 576),
+        }
+        width, height = size_map.get(resolved_size, (1024, 768))
+
+    # Map tier to BFL endpoint
+    bfl_tier = tier
+    if tier == "fast":
+        bfl_tier = "klein"
+    endpoint = BFL_ENDPOINTS.get(bfl_tier, BFL_ENDPOINTS["pro"])
+
+    body = {
+        "prompt": prompt,
+        "width": width,
+        "height": height,
+    }
+    if seed is not None:
+        body["seed"] = seed
+    if output_format:
+        body["output_format"] = output_format
+
+    print(f"Calling BFL API ({endpoint})...", file=sys.stderr)
+    result = post_bfl(endpoint, body)
+
+    # BFL returns result.url (single image) or result.images
+    image_url = result.get("result", {}).get("sample") if isinstance(result.get("result"), dict) else None
+    if not image_url:
+        # Try alternative response shapes
+        image_url = result.get("sample") or result.get("url")
+    if not image_url:
+        print(f"ERROR: Unexpected BFL response: {json.dumps(result, indent=2)}", file=sys.stderr)
+        sys.exit(1)
+
+    if not output_dir:
+        output_dir = Path.cwd() / "nano-image-output"
+
+    if output_path:
+        out_path = Path(output_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+    else:
+        out_path = make_output_path(
+            output_dir, label=label or "flux", ext=output_format,
+        )
+
+    file_size = download_image(image_url, out_path)
+
+    meta = {
+        "model": f"flux-2-{tier}",
+        "model_tier": "flux",
+        "endpoint": f"bfl:{endpoint}",
+        "prompt": prompt,
+        "image_size": f"{width}x{height}",
+        "seed": result.get("seed"),
+        "output_format": output_format,
+        "output_file": str(out_path),
+        "file_size_bytes": file_size,
+        "image_width": width,
+        "image_height": height,
+    }
+    meta_path = save_metadata(out_path, meta)
+
+    result_info = {
+        "status": "success",
+        "model": f"flux-2-{tier}",
+        "model_tier": "flux",
+        "endpoint": f"bfl:{endpoint}",
+        "images": [{
+            "output_file": str(out_path),
+            "metadata_file": meta_path,
+            "width": width,
+            "height": height,
+            "file_size_bytes": file_size,
+        }],
+    }
+    print(json.dumps(result_info, indent=2))
+    return result_info
+
+
+# --------------------------------------------------------------------------- #
 # fal.ai API path
 # --------------------------------------------------------------------------- #
 
@@ -270,9 +365,18 @@ def generate(prompt, input_image=None, image_size="landscape_4_3",
              tier="pro", guidance_scale=None, num_inference_steps=None,
              seed=None, num_images=1, output_format="png",
              output_path=None, output_dir=None, label=None):
-    """Route to local server or fal.ai based on FLUX_LOCAL_URL."""
+    """Route to local server, BFL API, or fal.ai.
+
+    Priority:
+      1. Local server (FLUX_LOCAL_URL) for fast/dev tiers
+      2. BFL API (BFL_API_KEY) for all tiers (max only available here)
+      3. fal.ai (FAL_KEY) as fallback
+    """
     local_url = get_local_url()
-    if local_url:
+    bfl_key = get_bfl_key()
+
+    # Local server handles fast/dev tiers
+    if local_url and tier in ("fast", "dev"):
         return generate_local(
             local_url, prompt, input_image=input_image, image_size=image_size,
             tier=tier, guidance_scale=guidance_scale,
@@ -280,14 +384,23 @@ def generate(prompt, input_image=None, image_size="landscape_4_3",
             num_images=num_images, output_format=output_format,
             output_path=output_path, output_dir=output_dir, label=label,
         )
-    else:
-        return generate_fal(
+
+    # BFL API for pro/max or when no local server
+    if bfl_key:
+        return generate_bfl(
             prompt, input_image=input_image, image_size=image_size,
-            tier=tier, guidance_scale=guidance_scale,
-            num_inference_steps=num_inference_steps, seed=seed,
-            num_images=num_images, output_format=output_format,
+            tier=tier, seed=seed, output_format=output_format,
             output_path=output_path, output_dir=output_dir, label=label,
         )
+
+    # fal.ai fallback
+    return generate_fal(
+        prompt, input_image=input_image, image_size=image_size,
+        tier=tier, guidance_scale=guidance_scale,
+        num_inference_steps=num_inference_steps, seed=seed,
+        num_images=num_images, output_format=output_format,
+        output_path=output_path, output_dir=output_dir, label=label,
+    )
 
 
 def main():
@@ -297,8 +410,8 @@ def main():
                         help="Input image path (enables editing mode)")
     parser.add_argument("--image-size", default="landscape_4_3",
                         help="Size: preset name, aspect ratio (16:9), or WxH (1920x1080)")
-    parser.add_argument("--tier", default="pro", choices=["pro", "fast", "dev"],
-                        help="Model tier: pro (quality), fast (klein), dev (full control)")
+    parser.add_argument("--tier", default="pro", choices=["max", "pro", "fast", "dev"],
+                        help="Model tier: max (best), pro (production), fast (klein), dev (full control)")
     parser.add_argument("--guidance-scale", type=float, default=None,
                         help="CFG guidance scale (dev tier only)")
     parser.add_argument("--num-inference-steps", type=int, default=None,
