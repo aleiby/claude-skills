@@ -18,7 +18,7 @@ Setup (on the GPU machine):
 Models are downloaded automatically on first use (~5GB for Klein 4B,
 ~60GB for Dev). Pre-download with:
 
-    python3 -c "from diffusers import FluxPipeline; FluxPipeline.from_pretrained('black-forest-labs/FLUX.2-klein-4B')"
+    python3 -c "from diffusers import Flux2KleinPipeline; Flux2KleinPipeline.from_pretrained('black-forest-labs/FLUX.2-klein-4B')"
 """
 
 import argparse
@@ -40,21 +40,28 @@ def _import_torch():
     import torch
     return torch
 
-def _import_pipeline():
-    # FLUX.2 pipelines — try the most likely class names.
-    # The Diffusers API may vary; adjust imports if needed.
+def _import_pipeline(tier="fast"):
+    """Import the appropriate pipeline class for the given tier.
+
+    Klein 4B uses Flux2KleinPipeline (dedicated, ~13GB VRAM).
+    Dev/other tiers fall back to FluxPipeline.
+    """
+    if tier == "fast":
+        try:
+            from diffusers import Flux2KleinPipeline
+            return Flux2KleinPipeline
+        except ImportError:
+            print("WARNING: Flux2KleinPipeline not found. "
+                  "Upgrade diffusers: pip install git+https://github.com/huggingface/diffusers.git",
+                  file=sys.stderr)
+    # Fallback for dev tier or if Klein pipeline unavailable
     try:
         from diffusers import FluxPipeline
         return FluxPipeline
     except ImportError:
         pass
-    try:
-        from diffusers import Flux2Pipeline
-        return Flux2Pipeline
-    except ImportError:
-        pass
     print("ERROR: Could not import FLUX pipeline from diffusers.", file=sys.stderr)
-    print("Install: pip install diffusers transformers accelerate", file=sys.stderr)
+    print("Install: pip install git+https://github.com/huggingface/diffusers.git", file=sys.stderr)
     sys.exit(1)
 
 
@@ -115,45 +122,20 @@ def load_model(tier):
         return _models[tier]
 
     torch = _import_torch()
-    FluxPipeline = _import_pipeline()
+    PipelineClass = _import_pipeline(tier)
     model_id = MODEL_IDS.get(tier)
     if not model_id:
         raise ValueError(f"Unknown tier: {tier}. Available: {list(MODEL_IDS.keys())}")
 
     print(f"Loading {tier} model: {model_id} ...", file=sys.stderr)
+    print(f"  Pipeline: {PipelineClass.__name__}", file=sys.stderr)
     t0 = time.time()
 
-    pipe = FluxPipeline.from_pretrained(
+    pipe = PipelineClass.from_pretrained(
         model_id,
         torch_dtype=torch.bfloat16,
-        text_encoder_2=None,
-        tokenizer_2=None,
-        feature_extractor=None,
-        image_encoder=None,
     )
-
-    # On <=24GB cards, use CPU offload: keeps text encoder on CPU, moves each
-    # component to GPU only during its forward pass, then back to CPU.
-    # This trades ~1-2s latency for fitting in VRAM.
-    total_vram = torch.cuda.get_device_properties(0).total_memory / 1024**3
-    if total_vram <= 32:
-        pipe.enable_model_cpu_offload()
-        print(f"  CPU offload enabled ({total_vram:.0f}GB VRAM)", file=sys.stderr)
-    else:
-        pipe.to("cuda")
-
-    # torch.compile with reduce-overhead uses CUDA graphs that pre-allocate
-    # large buffers (~16GB), which won't fit on a 24GB card alongside the model.
-    # Skip it to keep enough free VRAM for inference.
-    total_vram = torch.cuda.get_device_properties(0).total_memory / 1024**3
-    if total_vram > 32:
-        try:
-            pipe.transformer = torch.compile(pipe.transformer, mode="reduce-overhead")
-            print("  torch.compile enabled (reduce-overhead)", file=sys.stderr)
-        except Exception as e:
-            print(f"  torch.compile skipped: {e}", file=sys.stderr)
-    else:
-        print(f"  torch.compile skipped ({total_vram:.0f}GB VRAM — saving headroom)", file=sys.stderr)
+    pipe.to("cuda")
 
     dt = time.time() - t0
     print(f"  Loaded in {dt:.1f}s", file=sys.stderr)
