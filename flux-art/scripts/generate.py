@@ -180,16 +180,29 @@ def generate_bfl(prompt, input_image=None, image_size="landscape_4_3",
         width, height = size_map.get(resolved_size, (1024, 768))
 
     # Map tier to BFL endpoint
+    is_kontext = tier.startswith("kontext")
     bfl_tier = tier
     if tier == "fast":
         bfl_tier = "klein"
     endpoint = BFL_ENDPOINTS.get(bfl_tier, BFL_ENDPOINTS["pro"])
 
-    body = {
-        "prompt": prompt,
-        "width": width,
-        "height": height,
-    }
+    body = {"prompt": prompt}
+
+    # Kontext uses aspect_ratio, FLUX.2 uses width/height
+    if is_kontext:
+        # Map to aspect ratio string for Kontext
+        aspect_map = {
+            "landscape_16_9": "16:9", "landscape_4_3": "4:3",
+            "portrait_16_9": "9:16", "portrait_4_3": "3:4",
+            "square_hd": "1:1", "square": "1:1",
+        }
+        if isinstance(resolved_size, str) and resolved_size in aspect_map:
+            body["aspect_ratio"] = aspect_map[resolved_size]
+        # If editing, Kontext matches input dimensions by default — omit aspect_ratio
+    else:
+        body["width"] = width
+        body["height"] = height
+
     if seed is not None:
         body["seed"] = seed
     if output_format:
@@ -460,8 +473,9 @@ def main():
                         help="Input image path(s) for editing/compositing (up to 4 for Klein, 8 for Pro/Max)")
     parser.add_argument("--image-size", default="landscape_4_3",
                         help="Size: preset name, aspect ratio (16:9), or WxH (1920x1080)")
-    parser.add_argument("--tier", default="pro", choices=["max", "pro", "fast", "dev"],
-                        help="Model tier: max (best), pro (production), fast (klein), dev (full control)")
+    parser.add_argument("--tier", default="pro",
+                        choices=["max", "pro", "fast", "dev", "kontext-pro", "kontext-max"],
+                        help="Model tier: max/pro/fast/dev for generation, kontext-pro/kontext-max for targeted edits")
     parser.add_argument("--guidance-scale", type=float, default=None,
                         help="CFG guidance scale (dev tier only)")
     parser.add_argument("--num-inference-steps", type=int, default=None,

@@ -94,6 +94,8 @@ BFL_ENDPOINTS = {
     "dev": "flux-dev",
     "flex": "flux-2-flex",
     "klein": "flux-2-klein-4b",
+    "kontext-pro": "flux-kontext-pro",
+    "kontext-max": "flux-kontext-max",
 }
 
 
