@@ -131,7 +131,16 @@ def load_model(tier):
         feature_extractor=None,
         image_encoder=None,
     )
-    pipe.to("cuda")
+
+    # On <=24GB cards, use CPU offload: keeps text encoder on CPU, moves each
+    # component to GPU only during its forward pass, then back to CPU.
+    # This trades ~1-2s latency for fitting in VRAM.
+    total_vram = torch.cuda.get_device_properties(0).total_mem / 1024**3
+    if total_vram <= 32:
+        pipe.enable_model_cpu_offload()
+        print(f"  CPU offload enabled ({total_vram:.0f}GB VRAM)", file=sys.stderr)
+    else:
+        pipe.to("cuda")
 
     # torch.compile with reduce-overhead uses CUDA graphs that pre-allocate
     # large buffers (~16GB), which won't fit on a 24GB card alongside the model.
