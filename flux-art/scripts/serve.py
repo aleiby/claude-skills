@@ -43,8 +43,8 @@ def _import_torch():
 def _import_pipeline(tier="fast"):
     """Import the appropriate pipeline class for the given tier.
 
-    Klein 4B uses Flux2KleinPipeline (dedicated, ~13GB VRAM).
-    Dev/other tiers fall back to FluxPipeline.
+    Klein 4B uses Flux2KleinPipeline.
+    Dev uses Flux2Pipeline (FLUX.2-dev, not FLUX.1-dev).
     """
     if tier == "fast":
         try:
@@ -54,7 +54,15 @@ def _import_pipeline(tier="fast"):
             print("WARNING: Flux2KleinPipeline not found. "
                   "Upgrade diffusers: pip install git+https://github.com/huggingface/diffusers.git",
                   file=sys.stderr)
-    # Fallback for dev tier or if Klein pipeline unavailable
+    if tier == "dev":
+        try:
+            from diffusers import Flux2Pipeline
+            return Flux2Pipeline
+        except ImportError:
+            print("WARNING: Flux2Pipeline not found. "
+                  "Upgrade diffusers: pip install git+https://github.com/huggingface/diffusers.git",
+                  file=sys.stderr)
+    # Final fallback
     try:
         from diffusers import FluxPipeline
         return FluxPipeline
