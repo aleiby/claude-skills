@@ -133,12 +133,18 @@ def load_model(tier):
     )
     pipe.to("cuda")
 
-    # Attempt torch.compile for ~1.5x speedup (non-fatal if it fails)
-    try:
-        pipe.transformer = torch.compile(pipe.transformer, mode="reduce-overhead")
-        print("  torch.compile enabled", file=sys.stderr)
-    except Exception as e:
-        print(f"  torch.compile skipped: {e}", file=sys.stderr)
+    # torch.compile with reduce-overhead uses CUDA graphs that pre-allocate
+    # large buffers (~16GB), which won't fit on a 24GB card alongside the model.
+    # Skip it to keep enough free VRAM for inference.
+    total_vram = torch.cuda.get_device_properties(0).total_mem / 1024**3
+    if total_vram > 32:
+        try:
+            pipe.transformer = torch.compile(pipe.transformer, mode="reduce-overhead")
+            print("  torch.compile enabled (reduce-overhead)", file=sys.stderr)
+        except Exception as e:
+            print(f"  torch.compile skipped: {e}", file=sys.stderr)
+    else:
+        print(f"  torch.compile skipped ({total_vram:.0f}GB VRAM — saving headroom)", file=sys.stderr)
 
     dt = time.time() - t0
     print(f"  Loaded in {dt:.1f}s", file=sys.stderr)
