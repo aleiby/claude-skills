@@ -2,8 +2,8 @@
 name: flux-art
 description: |
   Flux image generation for concept art and screenshot restyling.
-  Uses FLUX.2 Pro (fal.ai API) or local inference (Klein 4B / Dev on RTX 4090).
-  FLUX.1 Control LoRA Canny for structure-preserving transforms.
+  Uses FLUX.2 via BFL API (Pro/Max), local inference (Klein 4B on RTX 4090),
+  or fal.ai as fallback. FLUX.1 Control LoRA Canny for structure-preserving transforms.
 
   INVOKE THIS SKILL when user requests Flux-specific image work:
   - "flux art", "generate with flux", "flux concept art"
@@ -26,16 +26,37 @@ user-invocable: true
 
 ## Environment
 
-Requires a fal.ai API key. The scripts check in order:
+### API Keys (checked in order)
+
+**BFL API (recommended)** — direct from Black Forest Labs:
+1. `BFL_API_KEY` env var
+2. `.env` in current directory, `~/.env`
+
+Get a key at https://dashboard.bfl.ai
+
+**fal.ai (fallback)**:
 1. `FAL_KEY` env var
 2. `.env` in current directory, `~/.env`
 
-Get a key at https://fal.ai/dashboard/keys
+### Local Server
 
+Set `FLUX_LOCAL_URL` to route fast/dev tiers to a local GPU:
 ```bash
-pip install fal-client
-export FAL_KEY="your-key"
+export FLUX_LOCAL_URL=http://192.168.1.100:8190
 ```
+
+## Backend Routing
+
+generate.py auto-routes based on tier and available credentials:
+
+| Tier | Auto route | Notes |
+|------|-----------|-------|
+| `fast` | Local server if `FLUX_LOCAL_URL` set, else BFL API, else fal.ai | Klein 4B, ~2s local |
+| `dev` | Local server if `FLUX_LOCAL_URL` set, else BFL API, else fal.ai | 32B, needs CPU offload locally |
+| `pro` | BFL API if `BFL_API_KEY` set, else fal.ai | Production quality |
+| `max` | BFL API only | Highest quality, best photorealism |
+
+Override with `--backend local|bfl|fal` to force a specific backend.
 
 ## Gallery
 
@@ -57,27 +78,27 @@ for a specific file location.
 
 ## Step 1: Classify the Request
 
-Every request falls into one of three modes:
+Every request falls into one of four modes:
 
-| Mode | When | Script | Endpoint |
-|------|------|--------|----------|
-| `concept` | New art from text prompt | generate.py | FLUX.2 Pro |
-| `refine` | Iterate on previous output | generate.py --input | FLUX.2 Pro Edit |
+| Mode | When | Script | Notes |
+|------|------|--------|-------|
+| `concept` | New art from text prompt | generate.py | Text-to-image |
+| `refine` | Iterate on previous output | generate.py --input | Single image edit |
+| `composite` | Combine elements from multiple images | generate.py --input img1 img2 ... | Multi-reference (up to 4 Klein, 8 Pro/Max) |
 | `restyle` | Structure-preserving screenshot beautification | restyle.py | FLUX.1 Control LoRA Canny |
 
 Classify the request BEFORE doing anything else.
 
 ### Model Tiers (generate.py --tier)
 
-| Tier | Endpoint | Cost | When |
-|------|----------|------|------|
-| `pro` (default) | `fal-ai/flux-2-pro` | $0.03/MP | Final quality, best prompt adherence |
-| `fast` | `fal-ai/flux-2/klein/4b/distilled` | $0.009/MP | Exploration, sub-second, iteration |
-| `dev` | `fal-ai/flux-2/edit` | $0.012/MP | Full parameter control (guidance, steps, num_images) |
+| Tier | Quality | Cost (BFL) | When |
+|------|---------|-----------|------|
+| `max` | Best | ~$0.04-0.06/MP | Final hero images, best prompt adherence |
+| `pro` (default) | High | ~$0.03/MP | Production quality, good prompt adherence |
+| `dev` | Good | ~$0.012/MP | Full parameter control (guidance, steps, num_images) |
+| `fast` | Draft | ~$0.014/MP or free local | Exploration, iteration, batch generation |
 
-Use `--tier fast` when brainstorming or exploring. Use `--tier pro` for final output.
-The `dev` tier is for when you need `--guidance-scale`, `--num-inference-steps`, or
-`--num-images` (Pro and Klein are zero-config).
+Use `--tier fast` when brainstorming or exploring. Use `--tier max` for final output.
 
 ## Step 2: Build the Prompt
 
@@ -93,11 +114,12 @@ Build a structured spec, then convert to a rich narrative prompt:
 
 ```json
 {
-  "mode": "concept|refine|restyle",
+  "mode": "concept|refine|composite|restyle",
   "prompt": "detailed scene description using positive-only language",
-  "input_image": "path if refine/restyle mode",
+  "input_images": ["path1.png", "path2.png"],
   "image_size": "landscape_16_9",
-  "tier": "pro|fast|dev",
+  "tier": "max|pro|fast|dev",
+  "backend": "auto|local|bfl|fal",
   "label": "descriptive-filename-prefix"
 }
 ```
@@ -138,7 +160,7 @@ python3 ~/.claude/skills/flux-art/scripts/generate.py \
   --label "concept-train"
 ```
 
-### Fast exploration (Klein, sub-second)
+### Fast exploration (Klein, sub-second on local GPU)
 ```bash
 python3 ~/.claude/skills/flux-art/scripts/generate.py \
   --prompt "detailed scene description" \
@@ -148,6 +170,16 @@ python3 ~/.claude/skills/flux-art/scripts/generate.py \
   --label "explore-train"
 ```
 
+### Max quality (BFL API)
+```bash
+python3 ~/.claude/skills/flux-art/scripts/generate.py \
+  --prompt "detailed scene description" \
+  --tier max \
+  --image-size "16:9" \
+  --output-dir ./nano-image-output \
+  --label "hero-train"
+```
+
 ### Refine mode (iterate on existing image)
 ```bash
 python3 ~/.claude/skills/flux-art/scripts/generate.py \
@@ -155,6 +187,27 @@ python3 ~/.claude/skills/flux-art/scripts/generate.py \
   --input /path/to/previous-output.png \
   --output-dir ./nano-image-output \
   --label "refine-train"
+```
+
+### Multi-reference composite (combine elements from multiple images)
+```bash
+python3 ~/.claude/skills/flux-art/scripts/generate.py \
+  --prompt "combine the locomotive from image 1 with the tunnel lighting from image 2" \
+  --input /path/to/train.png /path/to/tunnel.png \
+  --tier fast \
+  --output-dir ./nano-image-output \
+  --label "composite-train"
+```
+
+Klein supports up to 4 input images, Pro/Max up to 8.
+
+### Force a specific backend
+```bash
+# Force BFL API even for fast tier (compare against local)
+--backend bfl --tier fast
+
+# Force local server for dev tier
+--backend local --tier dev
 ```
 
 ### Restyle mode (screenshot → concept art)
@@ -186,13 +239,13 @@ Rate: ACCEPT / RETRY / FAIL
 ### Retry strategy:
 - Up to **3 retries** with revised prompt
 - Each retry should tighten the prompt — add specificity, strengthen style keywords
-- If using `--tier fast`, consider escalating to `--tier pro` for final attempt
+- If using `--tier fast`, consider escalating to `--tier pro` or `--tier max` for final attempt
 - After 3 retries, present best result and ask user
 
 ### How to retry:
 1. Identify what went wrong from the rubric
 2. Revise the prompt — add stronger positive descriptors
-3. Adjust parameters (image_size, tier)
+3. Adjust parameters (image_size, tier, backend)
 4. Regenerate
 
 **Remember: positive-only revisions.** If the result was too dark, say "bright
@@ -205,7 +258,7 @@ isn't running, mention the output file path.
 
 Mention:
 - Brief description of what was generated
-- Model tier used and cost
+- Model tier and backend used
 - If you iterated, what was adjusted
 
 Do NOT show raw JSON specs or technical details unless asked.
@@ -219,11 +272,13 @@ When the user asks to revise an existing image:
 3. Carry forward the original prompt's style and detail
 4. For edits to an existing image, use `generate.py` with `--input` pointing to the
    previous output
-5. For regeneration with a modified prompt, use `generate.py` without `--input`
+5. For multi-reference compositing, use `--input img1.png img2.png` with a prompt
+   describing which elements to take from each
+6. For regeneration with a modified prompt, use `generate.py` without `--input`
 
 ## Local Inference (GPU Server)
 
-Instead of the fal.ai API, you can run FLUX.2 on a local GPU (e.g., RTX 4090).
+Instead of the BFL/fal.ai APIs, you can run FLUX.2 on a local GPU (e.g., RTX 4090).
 The `serve.py` script runs a lightweight inference server that the client scripts
 call over the network.
 
@@ -232,12 +287,15 @@ call over the network.
 ```bash
 # Install dependencies
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
-pip install diffusers transformers accelerate sentencepiece protobuf
+pip install git+https://github.com/huggingface/diffusers.git
+pip install transformers accelerate sentencepiece protobuf
 pip install fastapi uvicorn pillow
 
-# Start server (Klein 4B preloaded — 8.4GB VRAM, sub-second generation)
+# Start server (Klein 4B preloaded via Flux2KleinPipeline)
 python3 ~/.claude/skills/flux-art/scripts/serve.py --port 8190
 ```
+
+**Important**: Requires latest diffusers from git for `Flux2KleinPipeline` support.
 
 ### Client configuration
 
@@ -252,20 +310,22 @@ Or add to `.env`:
 FLUX_LOCAL_URL=http://192.168.1.100:8190
 ```
 
-When `FLUX_LOCAL_URL` is set, all generate.py calls route to the local server.
-When unset, they fall back to the fal.ai API.
-
 ### Local tier mapping
 
-| --tier | Local model | VRAM | Speed (1024x1024) |
-|--------|-------------|------|-------------------|
-| `fast` | Klein 4B distilled | ~8.4 GB | ~1 second |
-| `dev` | Dev 32B (FP8) | ~18 GB | ~5-7 seconds |
-| `pro` | Maps to dev locally | ~18 GB | ~5-7 seconds |
+| --tier | Local model | Pipeline | VRAM | Speed (1024x576) |
+|--------|-------------|----------|------|-------------------|
+| `fast` | Klein 4B distilled | Flux2KleinPipeline | ~15 GB | ~2 seconds |
+| `dev` | Dev 32B (CPU offload) | FluxPipeline | ~15 GB GPU + 45 GB RAM | ~30-60 seconds |
+| `pro` | Routes to BFL API | — | — | ~10 seconds |
+| `max` | Routes to BFL API | — | — | ~15 seconds |
 
-Pro is API-only. When `FLUX_LOCAL_URL` is set and `--tier pro` is requested, the
-local server uses dev as the closest equivalent. For true Pro quality, unset
-`FLUX_LOCAL_URL` and use the fal.ai API.
+### Diagnostic endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Server status and loaded models |
+| `/gpu` | GET | VRAM usage (allocated/reserved/free) and process list |
+| `/clear-cache` | POST | Reclaim fragmented VRAM via gc + empty_cache |
 
 ### Health check
 
@@ -275,7 +335,16 @@ curl http://192.168.1.100:8190/health
 
 ## Pricing
 
-### fal.ai API
+### BFL API (api.bfl.ai) — recommended
+
+| Tier | Endpoint | Cost |
+|------|----------|------|
+| Max | `flux-2-max` | ~$0.04-0.06/megapixel |
+| Pro | `flux-2-pro-preview` | ~$0.03/megapixel |
+| Dev | `flux-dev` | ~$0.012/megapixel |
+| Fast (Klein) | `flux-2-klein-4b` | ~$0.014/megapixel |
+
+### fal.ai API (fallback)
 
 | Tier | Endpoint | Cost |
 |------|----------|------|
@@ -286,4 +355,4 @@ curl http://192.168.1.100:8190/health
 
 ### Local inference
 
-Effectively free (electricity only). Klein 4B: ~50-60 images/minute on RTX 4090.
+Effectively free (electricity only). Klein 4B: ~30 images/minute on RTX 4090.
