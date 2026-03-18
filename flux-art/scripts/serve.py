@@ -135,7 +135,13 @@ def load_model(tier):
         model_id,
         torch_dtype=torch.bfloat16,
     )
-    pipe.to("cuda")
+
+    total_vram = torch.cuda.get_device_properties(0).total_memory / 1024**3
+    if tier == "dev" and total_vram <= 32:
+        pipe.enable_model_cpu_offload()
+        print(f"  CPU offload enabled (dev on {total_vram:.0f}GB card)", file=sys.stderr)
+    else:
+        pipe.to("cuda")
 
     dt = time.time() - t0
     print(f"  Loaded in {dt:.1f}s", file=sys.stderr)
