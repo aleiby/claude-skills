@@ -384,14 +384,60 @@ Use `--metadata` to embed generation info in the PNG (gallery reads it automatic
 - Use absolute paths for `--output` (not `~/`)
 - Run via `mac bash -c 'source ~/.zshrc && mflux-generate-flux2 ...'`
 
+## Local Inference — Mac (flux-2-swift-mlx) — Dev 32B
+
+Dev 32B runs on M4 Max 128GB via the Swift MLX implementation.
+
+### Setup
+
+```bash
+# Clone and build (requires Xcode + Metal Toolchain)
+git clone https://github.com/VincentGourbin/flux-2-swift-mlx.git
+cd flux-2-swift-mlx
+xcodebuild -downloadComponent MetalToolchain
+xcodebuild -scheme Flux2CLI -configuration Release -destination "platform=macOS" build
+
+# Download models
+Flux2CLI download --model dev --transformer-quant int4
+Flux2CLI download --model dev --transformer-quant qint8
+```
+
+**Important**: `swift build` does NOT compile Metal shaders. Must use `xcodebuild`.
+
+Binary location: `~/Library/Developer/Xcode/DerivedData/flux-2-swift-mlx-*/Build/Products/Release/Flux2CLI`
+
+### Usage
+
+```bash
+mac bash -c 'source ~/.zshrc && /path/to/Flux2CLI t2i \
+  "prompt here" \
+  --model dev --transformer-quant int4 \
+  --width 1024 --height 576 --steps 28 \
+  -o /Users/aleiby/projects/signal-line/nano-image-output/output.png \
+  --profile'
+```
+
+### Quantization options
+
+| Quant | Per Step | Total (28 steps) | Memory | Notes |
+|-------|----------|-------------------|--------|-------|
+| int4 | ~25s | ~12-17min | ~32GB | Preferred for Signal Line concept art (more stylized/contrasty) |
+| qint8 | ~28s | ~13min | ~64GB | More precise, use for text/fine detail |
+
+First run downloads Mistral text encoder (~5min overhead, cached after).
+Use `--upsample-prompt` to enhance prompts with more visual detail.
+Does NOT embed metadata — create `.meta.json` sidecar manually.
+
 ## Performance Summary
 
 | Backend | Model | Time (1024x576) | Cost |
 |---------|-------|-----------------|------|
 | 4090 local | Klein 4B (bf16) | ~2s | Free |
-| Mac local | Klein 4B (q8) | ~8s | Free |
-| Mac local | Klein 4B (q4) | ~7s | Free |
-| Mac local | Klein 9B (q8) | ~16s | Free |
+| Mac mflux | Klein 4B (q4) | ~7s | Free |
+| Mac mflux | Klein 4B (q8) | ~8s | Free |
+| Mac mflux | Klein 9B (q8) | ~16s | Free |
+| Mac Swift | Dev 32B (int4) | ~12-17min | Free |
+| Mac Swift | Dev 32B (qint8) | ~13min | Free |
 | BFL API | Klein 4B | ~7s | ~$0.01 |
 | BFL API | Dev 32B | ~15s | ~$0.01 |
 | BFL API | Pro | ~10s | ~$0.02 |
