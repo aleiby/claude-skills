@@ -33,7 +33,7 @@ npm install   # installs deps + runs postinstall patch
 `tools/strudel-validate.mjs` provides headless pattern evaluation:
 
 ```bash
-# Validate a composition file (looks for exported patterns)
+# Validate a composition file
 node tools/strudel-validate.mjs <composition.js>
 
 # Or import in scripts
@@ -45,11 +45,22 @@ printPattern(note('c3 e3 g3 c4'), 1, 'My pattern');
 const events = queryPattern(myPattern, 4);  // structured event data
 ```
 
-Composition files should export patterns as named exports:
+Composition files use standard **Strudel REPL syntax** with `$:` for
+parallel voices — NOT ES module `export` syntax. The validator runs
+the code through Strudel's transpiler which converts `$:` into `.p()`
+pattern registration calls.
+
 ```js
-export const drums = s("bd sd hh sd");
-export const bass = note("c2 ~ e2 ~").s("sawtooth");
+// CORRECT — Strudel REPL syntax (works with validator + browser REPL)
+setcps(120 / 60 / 4)
+$: s("bd sd hh sd").bank("RolandTR909")
+$: note("c2 ~ e2 ~").s("sawtooth")
+
+// WRONG — ES module exports (will fail validation)
+// export const drums = s("bd sd hh sd");
 ```
+
+The same `.mjs` file works in both the validator (`node tools/strudel-validate.mjs file.mjs`) and the browser REPL (paste contents into https://strudel.cc).
 
 ### What Validation Can Check
 
@@ -304,6 +315,10 @@ note("c3 e3 g3").midichan(1).midi('IAC Driver')  // specific channel + device
 Requires WebMIDI (browser only). Supports clock/transport messaging.
 
 ## Metadata Tags
+
+**Always include `@title` and `@by` in every composition file** — both
+part files and assembled outputs. The build tool should preserve these
+from parts; assembled files get their own generated header.
 
 ```js
 // @title My Composition
