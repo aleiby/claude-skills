@@ -250,12 +250,15 @@ mac bash -c 'source ~/.zshrc && mflux-generate-flux2 \
   --model flux2-klein-9b --quantize 8 \
   --prompt "detailed scene description" \
   --width 1024 --height 576 --steps 4 --guidance 1.0 \
-  --output /Users/aleiby/projects/signal-line/nano-image-output/my-image.png \
+  --output <ABS_PROJECT_PATH>/nano-image-output/my-image.png \
   --metadata'
 ```
 
 mflux embeds full metadata in the PNG — the gallery reads it automatically.
-Use absolute paths (not `~/`) for `--output` to avoid OrbStack path issues.
+Substitute the current project's absolute path for `<ABS_PROJECT_PATH>` (the
+gallery lives at `<project>/nano-image-output/`). Use a Mac-absolute path (not
+`~/` or a relative cwd) for `--output` — OrbStack can't translate those from the
+Linux VM side.
 
 ### Restyle mode (screenshot → concept art)
 ```bash
@@ -413,7 +416,7 @@ mac bash -c 'source ~/.zshrc && /path/to/Flux2CLI t2i \
   "prompt here" \
   --model dev --transformer-quant int4 \
   --width 1024 --height 576 --steps 28 \
-  -o /Users/aleiby/projects/signal-line/nano-image-output/output.png \
+  -o <ABS_PROJECT_PATH>/nano-image-output/output.png \
   --profile'
 ```
 

@@ -42,8 +42,14 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--output-dir",
-        default="./nano-image-output",
-        help="Where to move generated images. Default: ./nano-image-output (shares gallery).",
+        default=None,
+        help=(
+            "Optional secondary destination — images are ALWAYS placed in "
+            "./nano-image-output (so the shared gallery picks them up). If "
+            "this is set and differs from nano-image-output, each generated "
+            "image is also COPIED to this directory (the gallery copy is the "
+            "canonical home; the secondary copy is for project organization)."
+        ),
     )
     p.add_argument(
         "--output",
@@ -64,16 +70,27 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def snapshot_codex_dir() -> set[str]:
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
+
+
+def snapshot_codex_dir() -> set[Path]:
+    """Recursively scan the codex output dir for image files. Codex CLI now
+    nests outputs in per-session UUID subdirectories, so the prior flat scan
+    (iterdir + is_file) missed every image. Walk the tree and return absolute
+    paths so the delta tells us exactly where each new image landed."""
     if not CODEX_OUTPUT_DIR.exists():
         return set()
-    return {entry.name for entry in CODEX_OUTPUT_DIR.iterdir() if entry.is_file()}
+    return {p for p in CODEX_OUTPUT_DIR.rglob("*") if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES}
 
 
 def build_codex_command(prompt: str, refs: list[Path]) -> list[str]:
     cmd = ["codex", "exec", "-s", "workspace-write"]
     for ref in refs:
         cmd += ["-i", str(ref)]
+    # `-i` is variadic in codex CLI (`<FILE>...`), so the trailing prompt would
+    # be swallowed as another image path without `--` separating them.
+    if refs:
+        cmd.append("--")
     cmd.append(f"$imagegen {prompt}")
     return cmd
 
@@ -89,11 +106,23 @@ def run_codex(cmd: list[str], timeout: int) -> subprocess.CompletedProcess:
     )
 
 
+GALLERY_DIR_NAME = "nano-image-output"
+
+
 def main() -> int:
     args = parse_args()
 
-    output_dir = Path(args.output_dir).resolve()
-    output_dir.mkdir(parents=True, exist_ok=True)
+    # Gallery dir is the canonical home so the shared web UI at :8899 always
+    # sees new images. --output-dir, when set and different, gets a second copy.
+    gallery_dir = (Path.cwd() / GALLERY_DIR_NAME).resolve()
+    gallery_dir.mkdir(parents=True, exist_ok=True)
+    secondary_dir: Path | None = None
+    if args.output_dir:
+        secondary_dir = Path(args.output_dir).resolve()
+        if secondary_dir == gallery_dir:
+            secondary_dir = None
+        else:
+            secondary_dir.mkdir(parents=True, exist_ok=True)
 
     refs = [Path(p).resolve() for p in args.input]
     for ref in refs:
@@ -151,18 +180,18 @@ def main() -> int:
         return 1
 
     timestamp = time.strftime("%Y%m%d-%H%M%S")
-    moved_paths: list[Path] = []
-    for i, name in enumerate(new_files):
-        src = CODEX_OUTPUT_DIR / name
+    new_paths = sorted(new_files, key=lambda p: str(p))
+    for i, src in enumerate(new_paths):
         ext = src.suffix or ".png"
-        if args.output and len(new_files) == 1:
+        if args.output and len(new_paths) == 1:
             dst_name = args.output
         else:
-            suffix = f"-{i}" if len(new_files) > 1 else ""
+            suffix = f"-{i}" if len(new_paths) > 1 else ""
             dst_name = f"{args.label}-{timestamp}{suffix}{ext}"
-        dst = output_dir / dst_name
-        shutil.move(str(src), str(dst))
-        moved_paths.append(dst)
+
+        # Canonical: move into the gallery dir.
+        gallery_dst = gallery_dir / dst_name
+        shutil.move(str(src), str(gallery_dst))
 
         meta = {
             "skill": "gpt-image",
@@ -170,12 +199,20 @@ def main() -> int:
             "prompt": args.prompt,
             "reference_images": [str(p) for p in refs],
             "timestamp": timestamp,
-            "codex_filename": name,
-            "output_path": str(dst),
+            "codex_filename": src.name,
+            "codex_session_dir": str(src.parent.relative_to(CODEX_OUTPUT_DIR)) if src.parent != CODEX_OUTPUT_DIR else "",
+            "output_path": str(gallery_dst),
         }
-        meta_path = dst.with_suffix(dst.suffix + ".meta.json")
+        meta_path = gallery_dst.with_suffix(gallery_dst.suffix + ".meta.json")
         meta_path.write_text(json.dumps(meta, indent=2))
-        print(f"[gpt-image] saved {dst}")
+        print(f"[gpt-image] saved {gallery_dst}")
+
+        # Optional secondary copy for project organization.
+        if secondary_dir is not None:
+            secondary_dst = secondary_dir / dst_name
+            shutil.copy2(str(gallery_dst), str(secondary_dst))
+            shutil.copy2(str(meta_path), str(secondary_dst.with_suffix(secondary_dst.suffix + ".meta.json")))
+            print(f"[gpt-image] also copied to {secondary_dst}")
 
     return 0
 

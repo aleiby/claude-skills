@@ -32,6 +32,29 @@ VALID_RESOLUTIONS = ["512", "1K", "2K", "4K"]
 API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 
+def sniff_image_ext(data, mime=None):
+    """Return the correct file extension for raw image bytes.
+
+    Gemini's image responses are frequently JPEG even when callers assume PNG;
+    naming JPEG bytes ".png" produced files Godot's PNG importer rejects. Sniff
+    the magic bytes (authoritative), fall back to the response mime type, then
+    ".png" as a last resort.
+    """
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return ".png"
+    if data[:3] == b"\xff\xd8\xff":
+        return ".jpg"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return ".webp"
+    mime = (mime or "").lower()
+    return {
+        "image/png": ".png",
+        "image/jpeg": ".jpg",
+        "image/jpg": ".jpg",
+        "image/webp": ".webp",
+    }.get(mime, ".png")
+
+
 def get_api_key():
     # Check environment variables in priority order (paid tier first)
     for var in ["GEMINI_API_KEY_PAID_TIER1", "GEMINI_API_KEY"]:
@@ -140,6 +163,7 @@ def generate(prompt, model="flash", aspect_ratio="1:1", resolution="1K",
         sys.exit(1)
 
     image_data = None
+    image_mime = None
     response_text = None
 
     for part in candidates[0].get("content", {}).get("parts", []):
@@ -147,6 +171,7 @@ def generate(prompt, model="flash", aspect_ratio="1:1", resolution="1K",
         inline = part.get("inline_data") or part.get("inlineData")
         if inline:
             image_data = inline.get("data")
+            image_mime = inline.get("mimeType") or inline.get("mime_type")
         elif "text" in part:
             response_text = part["text"]
 
@@ -159,6 +184,12 @@ def generate(prompt, model="flash", aspect_ratio="1:1", resolution="1K",
             print(json.dumps(result, indent=2), file=sys.stderr)
         sys.exit(1)
 
+    # Decode first so the file is named by its ACTUAL format. Gemini's flash
+    # tier returns image/jpeg; hardcoding ".png" wrote jpeg-in-png files that
+    # broke Godot's importer.
+    img_bytes = base64.b64decode(image_data)
+    true_ext = sniff_image_ext(img_bytes, image_mime)
+
     # Determine output path
     if not output_path:
         if not output_dir:
@@ -167,13 +198,14 @@ def generate(prompt, model="flash", aspect_ratio="1:1", resolution="1K",
             output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        output_path = output_dir / f"image-{timestamp}.png"
+        output_path = output_dir / f"image-{timestamp}{true_ext}"
     else:
         output_path = Path(output_path)
+        if output_path.suffix.lower() != true_ext:
+            output_path = output_path.with_suffix(true_ext)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Save image
-    img_bytes = base64.b64decode(image_data)
     output_path.write_bytes(img_bytes)
 
     # Save metadata sidecar

@@ -55,6 +55,13 @@ All generated images go to `./nano-image-output/` relative to the current workin
 directory by default. Pass `--output-dir` to scripts to match the gallery server's
 `--dir`. Override with `--output <path>` for specific file locations.
 
+Files are named by their **actual** format: the scripts sniff the returned bytes
+(Gemini's flash tier often returns JPEG) and pick the extension to match — `.jpg`,
+`.png`, or `.webp`. Even an explicit `--output name.png` is corrected to the true
+extension. This keeps extension == content so the file imports cleanly if copied
+into a Godot `assets/` folder. (`nano-image-output/` itself carries a `.gdignore`
+so the editor never imports these concept images.)
+
 ## Step 1: Classify the Request
 
 Every image request falls into one of these modes:

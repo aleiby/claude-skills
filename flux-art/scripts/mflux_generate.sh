@@ -5,7 +5,10 @@
 # Usage: mac bash ~/.claude/skills/flux-art/scripts/mflux_generate.sh \
 #   --model flux2-klein-4b --quantize 8 \
 #   --prompt "..." --width 1024 --height 576 --steps 4 \
-#   --output /Users/aleiby/projects/signal-line/nano-image-output/my-image.png
+#   --output <ABS_PROJECT_PATH>/nano-image-output/my-image.png
+# (substitute the current project's absolute path; the gallery lives at
+#  <project>/nano-image-output/. Mac-absolute path required — OrbStack can't
+#  translate ~/ or a relative cwd from the Linux VM side.)
 
 source ~/.zshrc 2>/dev/null
 

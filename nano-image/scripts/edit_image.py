@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 
 # Reuse generate_image internals
 sys.path.insert(0, str(Path(__file__).parent))
-from generate_image import get_api_key, MODELS, API_URL, VALID_ASPECT_RATIOS, VALID_RESOLUTIONS
+from generate_image import get_api_key, MODELS, API_URL, VALID_ASPECT_RATIOS, VALID_RESOLUTIONS, sniff_image_ext
 
 
 def edit_image(prompt, input_path, model="flash", aspect_ratio=None,
@@ -104,6 +104,7 @@ def edit_image(prompt, input_path, model="flash", aspect_ratio=None,
         sys.exit(1)
 
     output_image_data = None
+    output_image_mime = None
     response_text = None
 
     for part in candidates[0].get("content", {}).get("parts", []):
@@ -111,6 +112,7 @@ def edit_image(prompt, input_path, model="flash", aspect_ratio=None,
         inline = part.get("inline_data") or part.get("inlineData")
         if inline:
             output_image_data = inline.get("data")
+            output_image_mime = inline.get("mimeType") or inline.get("mime_type")
         elif "text" in part:
             response_text = part["text"]
 
@@ -122,6 +124,11 @@ def edit_image(prompt, input_path, model="flash", aspect_ratio=None,
             print(json.dumps(result, indent=2), file=sys.stderr)
         sys.exit(1)
 
+    # Decode first so the file is named by its ACTUAL format (Gemini often
+    # returns JPEG; jpeg-in-png files break Godot's importer).
+    img_bytes = base64.b64decode(output_image_data)
+    true_ext = sniff_image_ext(img_bytes, output_image_mime)
+
     # Determine output path
     if not output_path:
         if not output_dir:
@@ -131,13 +138,14 @@ def edit_image(prompt, input_path, model="flash", aspect_ratio=None,
         output_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         stem = input_file.stem
-        output_path = output_dir / f"{stem}-edited-{timestamp}.png"
+        output_path = output_dir / f"{stem}-edited-{timestamp}{true_ext}"
     else:
         output_path = Path(output_path)
+        if output_path.suffix.lower() != true_ext:
+            output_path = output_path.with_suffix(true_ext)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Save image
-    img_bytes = base64.b64decode(output_image_data)
     output_path.write_bytes(img_bytes)
 
     # Save metadata sidecar

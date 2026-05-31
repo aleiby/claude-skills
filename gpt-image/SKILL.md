@@ -55,10 +55,18 @@ python3 ~/.claude/skills/nano-image/scripts/gallery_server.py \
 
 ## Output Directory
 
-Codex saves to `~/.codex/generated_images/` by default. The `generate.py`
-script moves new files to `./nano-image-output/` (relative to the current
-working directory) and writes a `.meta.json` sidecar matching nano-image /
-flux-art conventions, so the gallery picks them up automatically.
+Codex saves to `~/.codex/generated_images/`. Recent codex versions nest each
+session's outputs in a UUID subdirectory, so `generate.py` walks the tree
+recursively to find new image files, then **always moves them to
+`./nano-image-output/`** (relative to cwd) so the shared gallery at :8899
+picks them up.
+
+`--output-dir <path>` no longer redirects the move — it requests an
+additional **copy** at that path for project organization. The gallery copy
+is the canonical home; the secondary copy is a duplicate. Both locations
+also receive the `.meta.json` sidecar. This way every generated image is
+reviewable in the gallery regardless of which project subdir the caller
+wanted to organize it into.
 
 ## Step 1: Classify the Request
 
@@ -107,8 +115,8 @@ the prompt-level hint is more reliable than relying on flag-passing.
 ```bash
 python3 ~/.claude/skills/gpt-image/scripts/generate.py \
   --prompt "alpha-channel sprite of a tall grass clump, transparent background, painterly" \
-  --label "weed-alpha" \
-  --output-dir ./nano-image-output
+  --label "weed-alpha"
+# → ./nano-image-output/weed-alpha-YYYYMMDD-HHMMSS.png  (gallery sees it)
 ```
 
 ### Edit / iterate (with reference image)
@@ -116,27 +124,31 @@ python3 ~/.claude/skills/gpt-image/scripts/generate.py \
 python3 ~/.claude/skills/gpt-image/scripts/generate.py \
   --prompt "make the colour deeper green and add slight motion blur on the tips" \
   --input ./assets/textures/grass_blade_alpha.png \
-  --label "weed-edit" \
-  --output-dir ./nano-image-output
+  --label "weed-edit"
 ```
 
-### Compose (multiple references)
+### Compose (multiple references) + secondary copy for project organization
 ```bash
 python3 ~/.claude/skills/gpt-image/scripts/generate.py \
   --prompt "combine the silhouette from image 1 with the painterly style from image 2" \
   --input ./refs/silhouette.png ./refs/style.png \
   --label "concept" \
-  --output-dir ./nano-image-output
+  --output-dir ./concepts/whatever
+# → primary:   ./nano-image-output/concept-...png  (gallery)
+# → secondary: ./concepts/whatever/concept-...png  (project-organized copy)
 ```
 
 The script:
 
-1. Snapshots existing files in `~/.codex/generated_images/`.
+1. Recursively snapshots image files under `~/.codex/generated_images/`
+   (codex nests outputs in per-session UUID subdirs).
 2. Calls `codex exec -s workspace-write [-i refs] "$imagegen <prompt>"` with
    stdin redirected to `/dev/null` (codex stdin gotcha).
-3. Detects new files appearing in the codex output dir.
-4. Moves each new file to the configured output dir with the script's naming
+3. Detects new image files anywhere in that tree.
+4. Moves each new file into `./nano-image-output/` with the script's naming
    scheme (`<label>-YYYYMMDD-HHMMSS.png`) and writes a `.meta.json` sidecar.
+5. If `--output-dir` was set and differs from `./nano-image-output`, also
+   copies the image + sidecar there.
 
 ## Step 4: Review
 
