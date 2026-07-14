@@ -1,27 +1,39 @@
 #!/usr/bin/env python3
 """Generate or edit images via OpenAI's gpt-image-2 through the Codex CLI.
 
-Wraps `codex exec -s workspace-write [-i ref...] "$imagegen <prompt>"`. Uses
-the Codex CLI's existing ChatGPT Pro authentication — no separate API key
-needed unless `OPENAI_API_KEY` is set, in which case Codex switches to API
-billing automatically.
+Wraps `codex exec --json -s workspace-write [-i ref...] "$imagegen <prompt>"`.
+Uses the Codex CLI's existing ChatGPT Pro authentication — no separate API key
+needed (billing flows through the ChatGPT plan).
+
+How the image is recovered (changed for codex-cli >= 0.140/0.141):
+    The built-in `image_gen` tool NO LONGER writes a PNG to
+    `~/.codex/generated_images/` in headless `codex exec` mode. Instead the
+    generated image is returned inline as base64 in the `result` field of an
+    `image_generation_call` response item, which codex persists ONLY in the
+    session rollout JSONL at `~/.codex/sessions/YYYY/MM/DD/rollout-*-<id>.jsonl`.
+    So we run codex with `--json` to learn the thread id from stdout, then read
+    that thread's rollout file and decode every embedded image.
+
+    A legacy fallback (scan `~/.codex/generated_images/` for files written
+    during the call) is kept for older codex versions / interactive saves.
 
 Generated images go to `./nano-image-output/` by default (shares the gallery
-with `flux-art` and `nano-image`). A `.meta.json` sidecar is written
-alongside each image with prompt + reference info.
+with `flux-art` and `nano-image`). A `.meta.json` sidecar is written alongside
+each image with prompt + reference info.
 """
 
 import argparse
+import base64
 import json
-import os
 import shutil
-import subprocess
 import sys
 import time
 from pathlib import Path
+import subprocess
 
 
 CODEX_OUTPUT_DIR = Path.home() / ".codex" / "generated_images"
+CODEX_SESSIONS_DIR = Path.home() / ".codex" / "sessions"
 
 
 def parse_args() -> argparse.Namespace:
@@ -73,29 +85,39 @@ def parse_args() -> argparse.Namespace:
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 
 
-def snapshot_codex_dir() -> set[Path]:
-    """Recursively scan the codex output dir for image files. Codex CLI now
-    nests outputs in per-session UUID subdirectories, so the prior flat scan
-    (iterdir + is_file) missed every image. Walk the tree and return absolute
-    paths so the delta tells us exactly where each new image landed."""
-    if not CODEX_OUTPUT_DIR.exists():
-        return set()
-    return {p for p in CODEX_OUTPUT_DIR.rglob("*") if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES}
+def detect_ext(raw: bytes) -> str:
+    """Map magic bytes to a file extension. gpt-image-2 returns PNG today, but
+    don't assume — write whatever format the bytes actually are."""
+    if raw[:4] == b"RIFF" and raw[8:12] == b"WEBP":
+        return ".webp"
+    if raw.startswith(b"\x89PNG\r\n\x1a\n"):
+        return ".png"
+    if raw.startswith(b"\xff\xd8\xff"):
+        return ".jpg"
+    if raw[:4] in (b"GIF8",):
+        return ".gif"
+    return ".png"  # safe default
 
 
-def build_codex_command(prompt: str, refs: list[Path]) -> list[str]:
-    cmd = ["codex", "exec", "-s", "workspace-write"]
+def build_codex_command(prompt: str, refs: list) -> list:
+    # `--json` makes codex print JSONL events to stdout; we read the thread id
+    # from the `thread.started` event so we can locate the session rollout.
+    cmd = ["codex", "exec", "--json", "-s", "workspace-write"]
     for ref in refs:
         cmd += ["-i", str(ref)]
     # `-i` is variadic in codex CLI (`<FILE>...`), so the trailing prompt would
     # be swallowed as another image path without `--` separating them.
     if refs:
         cmd.append("--")
+    # NB: do NOT instruct codex to "save the file" — when asked to write a file
+    # the model may fabricate a tiny placeholder PNG with code instead of using
+    # the real image_gen output. A plain `$imagegen <prompt>` generates the real
+    # image; we recover its bytes from the rollout ourselves.
     cmd.append(f"$imagegen {prompt}")
     return cmd
 
 
-def run_codex(cmd: list[str], timeout: int) -> subprocess.CompletedProcess:
+def run_codex(cmd: list, timeout: int) -> subprocess.CompletedProcess:
     # codex hangs on stdin if not explicitly closed (known gotcha — see codex skill).
     return subprocess.run(
         cmd,
@@ -104,6 +126,94 @@ def run_codex(cmd: list[str], timeout: int) -> subprocess.CompletedProcess:
         text=True,
         timeout=timeout,
     )
+
+
+def extract_thread_id(stdout: str):
+    """Pull the codex thread id out of the `--json` event stream on stdout."""
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line or not line.startswith("{"):
+            continue
+        try:
+            o = json.loads(line)
+        except Exception:
+            continue
+        if o.get("type") == "thread.started" and o.get("thread_id"):
+            return o["thread_id"]
+        if o.get("thread_id"):
+            return o["thread_id"]
+    return None
+
+
+def find_rollout(thread_id: str):
+    """Locate the session rollout JSONL for a given thread id."""
+    if not CODEX_SESSIONS_DIR.exists():
+        return None
+    matches = [
+        p
+        for p in CODEX_SESSIONS_DIR.rglob(f"*{thread_id}*.jsonl")
+        if p.is_file()
+    ]
+    if not matches:
+        return None
+    return max(matches, key=lambda p: p.stat().st_mtime)
+
+
+def extract_images_from_rollout(rollout: Path) -> list:
+    """Decode every image embedded in `image_generation_call` items.
+
+    Dedupe by the item's id, keeping the latest entry that actually carries a
+    `result` blob (an item may appear first with status 'generating' and no
+    bytes, then again with the final result)."""
+    latest_by_id = {}
+    order = []
+    with rollout.open() as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                o = json.loads(line)
+            except Exception:
+                continue
+            if o.get("type") != "response_item":
+                continue
+            pl = o.get("payload")
+            if not isinstance(pl, dict) or pl.get("type") != "image_generation_call":
+                continue
+            b64 = pl.get("result") or pl.get("b64_json")
+            if not isinstance(b64, str) or not b64:
+                continue
+            iid = pl.get("id") or f"_pos{len(order)}"
+            if iid not in latest_by_id:
+                order.append(iid)
+            latest_by_id[iid] = b64
+
+    out = []
+    for iid in order:
+        try:
+            out.append(base64.b64decode(latest_by_id[iid]))
+        except Exception as exc:
+            print(f"[gpt-image] failed to decode image {iid}: {exc}", file=sys.stderr)
+    return out
+
+
+def scan_new_disk_images(since: float) -> list:
+    """Legacy fallback: bytes of any image file under generated_images written
+    during this call (older codex versions / interactive saves still do this)."""
+    if not CODEX_OUTPUT_DIR.exists():
+        return []
+    out = []
+    for p in sorted(CODEX_OUTPUT_DIR.rglob("*")):
+        if not p.is_file() or p.suffix.lower() not in IMAGE_SUFFIXES:
+            continue
+        try:
+            if p.stat().st_mtime + 0.5 < since:
+                continue
+            out.append(p.read_bytes())
+        except OSError:
+            continue
+    return out
 
 
 GALLERY_DIR_NAME = "nano-image-output"
@@ -116,7 +226,7 @@ def main() -> int:
     # sees new images. --output-dir, when set and different, gets a second copy.
     gallery_dir = (Path.cwd() / GALLERY_DIR_NAME).resolve()
     gallery_dir.mkdir(parents=True, exist_ok=True)
-    secondary_dir: Path | None = None
+    secondary_dir = None
     if args.output_dir:
         secondary_dir = Path(args.output_dir).resolve()
         if secondary_dir == gallery_dir:
@@ -130,8 +240,8 @@ def main() -> int:
             print(f"[gpt-image] reference not found: {ref}", file=sys.stderr)
             return 1
 
-    before = snapshot_codex_dir()
     cmd = build_codex_command(args.prompt, refs)
+    started = time.time()
 
     print(
         f"[gpt-image] codex exec ({len(refs)} ref{'s' if len(refs) != 1 else ''}): "
@@ -158,40 +268,54 @@ def main() -> int:
             print(result.stdout[-2000:], file=sys.stderr)
         return 1
 
-    if not CODEX_OUTPUT_DIR.exists():
+    # Primary path: recover the image bytes from the session rollout.
+    thread_id = extract_thread_id(result.stdout)
+    image_blobs = []
+    rollout = None
+    if thread_id:
+        rollout = find_rollout(thread_id)
+        if rollout:
+            image_blobs = extract_images_from_rollout(rollout)
+        else:
+            print(
+                f"[gpt-image] could not find rollout for thread {thread_id} "
+                f"under {CODEX_SESSIONS_DIR}",
+                file=sys.stderr,
+            )
+    else:
         print(
-            f"[gpt-image] codex output dir does not exist ({CODEX_OUTPUT_DIR}); "
-            "did codex actually run the imagegen tool?",
+            "[gpt-image] could not parse a thread id from codex --json output.",
             file=sys.stderr,
         )
-        print("--- codex stdout ---", file=sys.stderr)
-        print(result.stdout, file=sys.stderr)
-        return 1
 
-    after = snapshot_codex_dir()
-    new_files = sorted(after - before)
-    if not new_files:
+    # Fallback: legacy on-disk images (older codex / interactive saves).
+    if not image_blobs:
+        image_blobs = scan_new_disk_images(started)
+
+    if not image_blobs:
         print(
-            f"[gpt-image] no new images appeared in {CODEX_OUTPUT_DIR} after the codex call.",
+            "[gpt-image] no images recovered from the codex call "
+            "(checked the session rollout and ~/.codex/generated_images).",
             file=sys.stderr,
         )
-        print("--- codex stdout ---", file=sys.stderr)
-        print(result.stdout, file=sys.stderr)
+        if rollout:
+            print(f"--- rollout inspected: {rollout} ---", file=sys.stderr)
+        print("--- codex stdout (last 2000 chars) ---", file=sys.stderr)
+        print(result.stdout[-2000:], file=sys.stderr)
         return 1
 
     timestamp = time.strftime("%Y%m%d-%H%M%S")
-    new_paths = sorted(new_files, key=lambda p: str(p))
-    for i, src in enumerate(new_paths):
-        ext = src.suffix or ".png"
-        if args.output and len(new_paths) == 1:
+    for i, raw in enumerate(image_blobs):
+        ext = detect_ext(raw)
+        if args.output and len(image_blobs) == 1:
             dst_name = args.output
         else:
-            suffix = f"-{i}" if len(new_paths) > 1 else ""
+            suffix = f"-{i}" if len(image_blobs) > 1 else ""
             dst_name = f"{args.label}-{timestamp}{suffix}{ext}"
 
-        # Canonical: move into the gallery dir.
+        # Canonical: write into the gallery dir.
         gallery_dst = gallery_dir / dst_name
-        shutil.move(str(src), str(gallery_dst))
+        gallery_dst.write_bytes(raw)
 
         meta = {
             "skill": "gpt-image",
@@ -199,19 +323,23 @@ def main() -> int:
             "prompt": args.prompt,
             "reference_images": [str(p) for p in refs],
             "timestamp": timestamp,
-            "codex_filename": src.name,
-            "codex_session_dir": str(src.parent.relative_to(CODEX_OUTPUT_DIR)) if src.parent != CODEX_OUTPUT_DIR else "",
+            "codex_thread_id": thread_id,
+            "codex_rollout": str(rollout) if rollout else "",
+            "bytes": len(raw),
             "output_path": str(gallery_dst),
         }
         meta_path = gallery_dst.with_suffix(gallery_dst.suffix + ".meta.json")
         meta_path.write_text(json.dumps(meta, indent=2))
-        print(f"[gpt-image] saved {gallery_dst}")
+        print(f"[gpt-image] saved {gallery_dst} ({len(raw)} bytes)")
 
         # Optional secondary copy for project organization.
         if secondary_dir is not None:
             secondary_dst = secondary_dir / dst_name
             shutil.copy2(str(gallery_dst), str(secondary_dst))
-            shutil.copy2(str(meta_path), str(secondary_dst.with_suffix(secondary_dst.suffix + ".meta.json")))
+            shutil.copy2(
+                str(meta_path),
+                str(secondary_dst.with_suffix(secondary_dst.suffix + ".meta.json")),
+            )
             print(f"[gpt-image] also copied to {secondary_dst}")
 
     return 0

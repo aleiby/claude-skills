@@ -53,20 +53,31 @@ python3 ~/.claude/skills/nano-image/scripts/gallery_server.py \
   --dir ./nano-image-output &
 ```
 
-## Output Directory
+## How the image is recovered (codex-cli >= 0.140/0.141)
 
-Codex saves to `~/.codex/generated_images/`. Recent codex versions nest each
-session's outputs in a UUID subdirectory, so `generate.py` walks the tree
-recursively to find new image files, then **always moves them to
-`./nano-image-output/`** (relative to cwd) so the shared gallery at :8899
-picks them up.
+**Codex no longer writes a PNG to `~/.codex/generated_images/` in headless
+`codex exec` mode.** As of codex-cli 0.140/0.141 (an OpenAI change), the
+built-in `image_gen` tool returns the image **inline** as base64 in the
+`result` field of an `image_generation_call` response item, persisted **only**
+in the session rollout JSONL at
+`~/.codex/sessions/YYYY/MM/DD/rollout-*-<thread_id>.jsonl`.
 
-`--output-dir <path>` no longer redirects the move — it requests an
-additional **copy** at that path for project organization. The gallery copy
-is the canonical home; the secondary copy is a duplicate. Both locations
-also receive the `.meta.json` sidecar. This way every generated image is
-reviewable in the gallery regardless of which project subdir the caller
-wanted to organize it into.
+So `generate.py` runs codex with `--json`, reads the `thread_id` from the
+`thread.started` event on stdout, opens that thread's rollout file, decodes
+every embedded `image_generation_call` result, and writes them to
+`./nano-image-output/`. This keeps ChatGPT Pro billing (built-in tool, no
+`OPENAI_API_KEY`). A legacy fallback still scans `~/.codex/generated_images/`
+for older codex versions / interactive saves.
+
+**Do NOT tell codex to "save the file" in the prompt** — when asked to write a
+file, the model may fabricate a tiny placeholder PNG with code instead of using
+the real `image_gen` output. The plain `$imagegen <prompt>` generates the real
+image; the script recovers the bytes from the rollout.
+
+`--output-dir <path>` requests an additional **copy** at that path for project
+organization. The gallery copy (`./nano-image-output/`) is the canonical home;
+the secondary copy is a duplicate. Both locations also receive the
+`.meta.json` sidecar.
 
 ## Step 1: Classify the Request
 
@@ -140,14 +151,17 @@ python3 ~/.claude/skills/gpt-image/scripts/generate.py \
 
 The script:
 
-1. Recursively snapshots image files under `~/.codex/generated_images/`
-   (codex nests outputs in per-session UUID subdirs).
-2. Calls `codex exec -s workspace-write [-i refs] "$imagegen <prompt>"` with
-   stdin redirected to `/dev/null` (codex stdin gotcha).
-3. Detects new image files anywhere in that tree.
-4. Moves each new file into `./nano-image-output/` with the script's naming
-   scheme (`<label>-YYYYMMDD-HHMMSS.png`) and writes a `.meta.json` sidecar.
-5. If `--output-dir` was set and differs from `./nano-image-output`, also
+1. Calls `codex exec --json -s workspace-write [-i refs] "$imagegen <prompt>"`
+   with stdin redirected to `/dev/null` (codex stdin gotcha).
+2. Parses the `--json` event stream on stdout for the `thread_id`.
+3. Opens that thread's rollout JSONL under `~/.codex/sessions/` and decodes
+   the base64 from every `image_generation_call` result (dedup by item id).
+4. Writes each image into `./nano-image-output/` with the script's naming
+   scheme (`<label>-YYYYMMDD-HHMMSS.<ext>`, format auto-detected from magic
+   bytes) and writes a `.meta.json` sidecar.
+5. If the rollout yields nothing, falls back to scanning
+   `~/.codex/generated_images/` for files written during the call.
+6. If `--output-dir` was set and differs from `./nano-image-output`, also
    copies the image + sidecar there.
 
 ## Step 4: Review
