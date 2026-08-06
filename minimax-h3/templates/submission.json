@@ -1,0 +1,51 @@
+{
+  "labels": {
+    "project": "replace-me",
+    "shot": "line-001"
+  },
+  "prompt": "<Picture 1> establishes the character and scene. <Audio 1> is the exact dialogue. Restrained natural presenter motion, stable background, and no extraneous motion after the line.",
+  "local_inputs": {
+    "reference_images": [
+      "/absolute/path/to/character-reference.png"
+    ],
+    "reference_videos": [],
+    "reference_audios": [
+      "/absolute/path/to/final-line.wav"
+    ]
+  },
+  "generation": {
+    "width": 1024,
+    "height": 576,
+    "length": 107,
+    "ref_image_size": "match",
+    "seed": 42,
+    "sampler": "res_multistep",
+    "scheduler": "simple",
+    "steps": 20,
+    "denoise": 1.0
+  },
+  "models": {
+    "video_vae": "minimax_h3_video_vae_fp16.safetensors",
+    "audio_vae": "minimax_h3_audio_vae_fp32.safetensors",
+    "text_encoder": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    "text_encoder_type": "minimax",
+    "text_encoder_device": "default",
+    "diffusion_model": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+    "weight_dtype": "default"
+  },
+  "output": {
+    "fps": 24.0,
+    "bit_depth": 8,
+    "format": "mp4",
+    "codec": {
+      "name": "h264",
+      "encoding": {
+        "mode": "auto"
+      }
+    }
+  },
+  "mask": {
+    "enabled": true
+  },
+  "cache_policy": "use"
+}

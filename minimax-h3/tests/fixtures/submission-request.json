@@ -1,0 +1,57 @@
+{
+  "labels": {
+    "project": "example",
+    "shot": "line-001"
+  },
+  "prompt": "<Picture 1> and <Picture 2> establish visual continuity. <Video 1> supplies motion reference. <Audio 1> is the exact dialogue.",
+  "inputs": {
+    "reference_images": [
+      "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    ],
+    "reference_videos": [
+      {
+        "video": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "audio": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      }
+    ],
+    "reference_audios": [
+      "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    ]
+  },
+  "generation": {
+    "width": 1024,
+    "height": 576,
+    "length": 107,
+    "ref_image_size": "match",
+    "seed": 42,
+    "sampler": "res_multistep",
+    "scheduler": "simple",
+    "steps": 20,
+    "denoise": 1.0
+  },
+  "models": {
+    "video_vae": "minimax_h3_video_vae_fp16.safetensors",
+    "audio_vae": "minimax_h3_audio_vae_fp32.safetensors",
+    "text_encoder": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+    "text_encoder_type": "minimax",
+    "text_encoder_device": "default",
+    "diffusion_model": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+    "weight_dtype": "default"
+  },
+  "output": {
+    "fps": 24.0,
+    "bit_depth": 8,
+    "format": "mp4",
+    "codec": {
+      "name": "h264",
+      "encoding": {
+        "mode": "auto"
+      }
+    }
+  },
+  "mask": {
+    "enabled": true
+  },
+  "cache_policy": "use"
+}

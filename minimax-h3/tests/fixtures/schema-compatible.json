@@ -1,0 +1,81 @@
+{
+  "protocol_version": "1.0",
+  "graph_schema_version": 1,
+  "workflow_version": 2,
+  "compatible": true,
+  "incompatibilities": [],
+  "unmapped": {},
+  "fields": {
+    "prompt": {"node": "MiniMaxH3ReferenceToVideo", "socket": "prompt"},
+    "inputs.reference_images": {"node": "MiniMaxH3ReferenceToVideo", "socket": "ref_images.ref_image_N"},
+    "inputs.reference_videos": {"node": "MiniMaxH3ReferenceToVideo", "socket": "ref_videos.ref_video_N"},
+    "inputs.reference_videos.audio": {"node": "MiniMaxH3ReferenceToVideo", "socket": "ref_video_audios.ref_video_audio_N"},
+    "inputs.reference_audios": {"node": "MiniMaxH3ReferenceToVideo", "socket": "ref_audios.ref_audio_N"},
+    "generation.width": {"node": "MiniMaxH3ReferenceToVideo", "socket": "width"},
+    "generation.height": {"node": "MiniMaxH3ReferenceToVideo", "socket": "height"},
+    "generation.length": {"node": "MiniMaxH3ReferenceToVideo", "socket": "length"},
+    "generation.ref_image_size": {"node": "MiniMaxH3ReferenceToVideo", "socket": "ref_image_size"},
+    "generation.seed": {"node": "RandomNoise", "socket": "noise_seed"},
+    "generation.sampler": {"node": "KSamplerSelect", "socket": "sampler_name"},
+    "generation.scheduler": {"node": "BasicScheduler", "socket": "scheduler"},
+    "generation.steps": {"node": "BasicScheduler", "socket": "steps"},
+    "generation.denoise": {"node": "BasicScheduler", "socket": "denoise"},
+    "models.video_vae": {"node": "VAELoader", "socket": "vae_name"},
+    "models.audio_vae": {"node": "VAELoader", "socket": "vae_name"},
+    "models.text_encoder": {"node": "CLIPLoader", "socket": "clip_name"},
+    "models.text_encoder_type": {"node": "CLIPLoader", "socket": "type"},
+    "models.text_encoder_device": {"node": "CLIPLoader", "socket": "device"},
+    "models.diffusion_model": {"node": "UNETLoader", "socket": "unet_name"},
+    "models.weight_dtype": {"node": "UNETLoader", "socket": "weight_dtype"},
+    "output.fps": {"node": "CreateVideo", "socket": "fps"},
+    "output.bit_depth": {"node": "CreateVideo", "socket": "bit_depth"},
+    "output.format": {"node": "SaveVideo", "socket": "format"},
+    "output.codec.name": {"node": "SaveVideo", "socket": "codec"},
+    "output.codec.encoding.mode": {"node": "SaveVideo", "socket": "codec.encoding"},
+    "output.codec.encoding.crf": {"node": "SaveVideo", "socket": "codec.encoding.crf"},
+    "mask.enabled": {"node": "BiRefNetMask", "socket": "enabled"}
+  },
+  "live_nodes": {},
+  "defaults": {
+    "inputs": {
+      "reference_images": [],
+      "reference_videos": [],
+      "reference_audios": []
+    },
+    "generation": {
+      "width": 1024,
+      "height": 576,
+      "length": 107,
+      "ref_image_size": "match",
+      "seed": 42,
+      "sampler": "res_multistep",
+      "scheduler": "simple",
+      "steps": 20,
+      "denoise": 1.0
+    },
+    "models": {
+      "video_vae": "minimax_h3_video_vae_fp16.safetensors",
+      "audio_vae": "minimax_h3_audio_vae_fp32.safetensors",
+      "text_encoder": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "text_encoder_type": "minimax",
+      "text_encoder_device": "default",
+      "diffusion_model": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "output": {
+      "fps": 24.0,
+      "bit_depth": 8,
+      "format": "mp4",
+      "codec": {
+        "name": "h264",
+        "encoding": {
+          "mode": "auto"
+        }
+      }
+    },
+    "mask": {
+      "enabled": true
+    }
+  },
+  "render_provenance": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+}
