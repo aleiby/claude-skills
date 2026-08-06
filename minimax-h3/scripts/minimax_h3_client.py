@@ -71,13 +71,14 @@ def _config_from_file(path: Path) -> ClientConfig | None:
 def load_config(*, env: Mapping[str, str] | None = None, home: Path | None = None) -> ClientConfig:
     values = os.environ if env is None else env
     root = Path.home() if home is None else Path(home)
-    environment_api = values.get("MINIMAX_H3_API") or values.get("COMMITTED_H3_API")
-    environment_token = values.get("MINIMAX_H3_TOKEN") or values.get("COMMITTED_H3_TOKEN")
+    environment_api = values.get("MINIMAX_H3_API")
+    environment_token = values.get("MINIMAX_H3_TOKEN")
     if environment_api and environment_token:
         return ClientConfig(environment_api.rstrip("/"), environment_token)
-    generic = _config_from_file(root / ".config" / "minimax-h3" / "config.json")
-    legacy = None if generic is not None else _config_from_file(root / ".config" / "committed" / "h3.json")
-    file_config = generic or legacy or ClientConfig("http://127.0.0.1:8191", None)
+    file_config = (
+        _config_from_file(root / ".config" / "minimax-h3" / "config.json")
+        or ClientConfig("http://127.0.0.1:8191", None)
+    )
     api = environment_api or file_config.api_url
     token = environment_token or file_config.token
     return ClientConfig(api.rstrip("/"), token)

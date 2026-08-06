@@ -50,7 +50,7 @@ def make_client(responses):
     return client_module.H3Client(config, transport=transport), transport
 
 
-def test_generic_environment_beats_legacy_environment(tmp_path):
+def test_only_minimax_environment_is_recognized(tmp_path):
     env = {
         "MINIMAX_H3_API": "http://new.example:8191/",
         "MINIMAX_H3_TOKEN": "new-token",
@@ -62,6 +62,15 @@ def test_generic_environment_beats_legacy_environment(tmp_path):
 
     assert config.api_url == "http://new.example:8191"
     assert config.token == "new-token"
+
+    legacy_only = client_module.load_config(
+        env={
+            "COMMITTED_H3_API": "http://legacy.example:8191",
+            "COMMITTED_H3_TOKEN": "legacy-token",
+        },
+        home=tmp_path,
+    )
+    assert legacy_only == client_module.ClientConfig("http://127.0.0.1:8191", None)
 
 
 def test_complete_environment_does_not_read_stale_config(tmp_path):
@@ -77,7 +86,7 @@ def test_complete_environment_does_not_read_stale_config(tmp_path):
     assert config == client_module.ClientConfig("http://env", "env-token")
 
 
-def test_generic_config_beats_legacy_config_and_requires_private_mode(tmp_path):
+def test_minimax_config_is_canonical_and_requires_private_mode(tmp_path):
     generic = tmp_path / ".config" / "minimax-h3" / "config.json"
     legacy = tmp_path / ".config" / "committed" / "h3.json"
     generic.parent.mkdir(parents=True)
@@ -90,6 +99,18 @@ def test_generic_config_beats_legacy_config_and_requires_private_mode(tmp_path):
     config = client_module.load_config(env={}, home=tmp_path)
 
     assert config == client_module.ClientConfig("http://new", "new")
+
+
+def test_old_committed_config_is_not_loaded(tmp_path):
+    legacy = tmp_path / ".config" / "committed" / "h3.json"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text(json.dumps({"api": "http://legacy", "token": "legacy"}))
+    if os.name != "nt":
+        legacy.chmod(0o600)
+
+    config = client_module.load_config(env={}, home=tmp_path)
+
+    assert config == client_module.ClientConfig("http://127.0.0.1:8191", None)
 
 
 @pytest.mark.skipif(os.name == "nt", reason="Unix permission check")

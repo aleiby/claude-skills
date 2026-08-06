@@ -19,10 +19,8 @@ python3 "$CLIENT" --help
 The client reads, in order:
 
 1. `MINIMAX_H3_API` and `MINIMAX_H3_TOKEN`
-2. legacy `COMMITTED_H3_API` and `COMMITTED_H3_TOKEN`
-3. `~/.config/minimax-h3/config.json`
-4. legacy `~/.config/committed/h3.json`
-5. unauthenticated `http://127.0.0.1:8191`
+2. `~/.config/minimax-h3/config.json`
+3. unauthenticated `http://127.0.0.1:8191`
 
 Never put a token on the command line or print it. JSON config files containing a
 token must be mode `0600` on Unix. A config looks like:
@@ -30,6 +28,9 @@ token must be mode `0600` on Unix. A config looks like:
 ```json
 {"api": "http://192.168.5.150:8191", "token": "REDACTED"}
 ```
+
+The MiniMax names and config path are the complete supported surface. Do not
+look for or create project-specific aliases.
 
 ## Required workflow
 
