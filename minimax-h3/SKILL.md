@@ -50,6 +50,10 @@ Copy the template into the working directory and edit it. Keep `local_inputs`
 in semantic order: `<Picture 1>` maps to the first image, `<Video 1>` to the
 first video, and `<Audio 1>` to the first standalone audio.
 
+Write the `prompt` field with the official H3 schema before editing anything
+else; see [Prompting](#prompting). A short free-form sentence wastes most of the
+Qwen3-VL conditioning and is the most common cause of weak results.
+
 ```bash
 test ! -e ./h3-submission.json || { echo "h3-submission.json already exists" >&2; exit 1; }
 cp -f "$SKILL_DIR/templates/submission.json" ./h3-submission.json
@@ -78,6 +82,54 @@ python3 "$CLIENT" download HANDLE_ID mask ./line-mask.mkv
 Downloads stage to `.part`, verify the advertised byte count, SHA-256, and
 ETag, fsync, then rename atomically. The MP4's picture and native synchronized
 audio must stay together. The mask is grayscale FFV1 in Matroska.
+
+## Prompting
+
+H3 has an official prompt schema. Follow it; do not invent section names or
+free-form phrasing. Both guides are vendored so this skill works offline:
+
+- Ref2VA (any reference image, video, or audio attached) —
+  [references/prompt-guide-ref-en.txt](references/prompt-guide-ref-en.txt)
+- T2VA / I2VA / FL2VA / L2VA (no references) —
+  [references/prompt-guide-base-en.txt](references/prompt-guide-base-en.txt)
+
+Upstream: [`MiniMax-AI/MiniMax-H3`](https://github.com/MiniMax-AI/MiniMax-H3)
+ships these as the `h3-prompt-writing` skill; the vendored copies are byte-identical
+to `skills/h3-prompt-writing/references/{ref,base}-en.txt`. Re-sync them when
+that repo updates rather than paraphrasing.
+
+Ref2VA uses six sections, in this exact order and with these exact names:
+
+```text
+subject_definitions:   <Subject N> / <Picture N> / <Video N> / <Audio N>
+summary:               [task-type prefix] one paragraph
+retention_analysis:    per reference: fully_preserved | partially_preserved |
+                       attribute_transfer | weak_reference   (visible content)
+                       fully_copy | partially_copy | reference | weak_reference  (audio)
+detailed_description:  one style sentence, then [Shot 1], then
+                       [Shot N] At MM:SS.mmm, ...
+overall_soundscape:    ambience and physical sound only
+non_diegetic_music:    score, or N/A
+```
+
+Rules that are easy to get wrong:
+
+- Assign `(S1)`, `(S2)` once per vocal source, in target-video order, and reuse
+  them consistently.
+- Wrap dialogue as `<d>[English] exact words.</d>`; keep the original language.
+- Never repeat dialogue in `overall_soundscape`.
+- Target 350-500 English words in `detailed_description` for freeform generation.
+- H3 is CFG-distilled: there is no negative prompt and no guidance scale. Suppress
+  unwanted behaviour positively ("remains silent, lips closed"), never as "no X".
+
+### Narrow shots vs freeform shots
+
+The word-count guidance above is for freeform multi-shot generation. A
+single-take shot that must not deviate from its references — lipsyncing a still
+portrait, for example — wants the same six sections but a deliberately short,
+single-`[Shot 1]` `detailed_description` that forbids new gestures and extra
+cuts. Keep the official section names in both cases; vary only the content
+length. Do not pad a locked-off shot to 500 words.
 
 ## Cache and recovery
 

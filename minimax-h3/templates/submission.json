@@ -3,7 +3,7 @@
     "project": "replace-me",
     "shot": "line-001"
   },
-  "prompt": "<Picture 1> establishes the character and scene. <Audio 1> is the exact dialogue. Restrained natural presenter motion, stable background, and no extraneous motion after the line.",
+  "prompt": "subject_definitions:\n<Subject 1> is the presenter in <Picture 1>: REPLACE with identity, hair, wardrobe, and framing.\n<Audio 1> is the synchronized English dialogue for <Subject 1> (S1).\n\nsummary:\n[reference generation + audio reference] REPLACE with one paragraph naming what the target video shows and which reference drives which part of the shot.\n\nretention_analysis:\n<Subject 1> (appears in [Shot 1]): fully_preserved - identity, facial proportions, wardrobe, and framing are retained.\n<Audio 1>: fully_copy - its words, timing, and duration are reproduced exactly.\n\ndetailed_description:\nThe target video is a REPLACE-WITH-STYLE shot with REPLACE-WITH-LIGHTING.\n[Shot 1] <Subject 1> (S1) REPLACE with composition, action, and camera. S1 says <d>[English] REPLACE with the exact spoken line.</d> in precise synchronization with <Audio 1>.\n\noverall_soundscape:\nREPLACE with ambience and physical sound only, or state that only <Audio 1> is audible.\n\nnon_diegetic_music:\nN/A",
   "local_inputs": {
     "reference_images": [
       "/absolute/path/to/character-reference.png"
