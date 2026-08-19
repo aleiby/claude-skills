@@ -19,6 +19,7 @@ from urllib.parse import quote, urlsplit
 
 
 SUPPORTED_PROTOCOL_MAJOR = 1
+RESET_LISTENER_PORT = 8192
 TERMINAL_STATES = frozenset({"succeeded", "failed", "cancelled"})
 
 
@@ -202,6 +203,46 @@ class H3Client:
         ready = self._json("GET", "/health/ready")
         schema = self.schema()
         return {"live": live, "ready": ready, "schema": schema}
+
+    def reset(self, *, wait_seconds: float = 300.0, poll_interval: float = 10.0) -> dict[str, Any]:
+        """Out-of-band API restart via the reset listener on port 8192.
+
+        Covers the failure classes the main port cannot report on itself: a
+        poisoned worker (readiness 503 `worker: cuda_poisoned`) and a wedged
+        API process (TCP connects, every request hangs). The listener is a
+        separate process on the host, restarts only the API task, and refuses
+        repeat resets inside a 300-second cooldown.
+        """
+        reset_transport = HttpTransport(
+            f"{self.transport.scheme}://{self.transport.host}:{RESET_LISTENER_PORT}",
+            timeout=30.0,
+        )
+        headers = {"Accept": "application/json"}
+        if self.config.token:
+            headers["Authorization"] = f"Bearer {self.config.token}"
+        try:
+            response = reset_transport.request("POST", "/reset", headers=headers)
+        except ClientError as exc:
+            raise ClientError(
+                f"reset listener unreachable on port {RESET_LISTENER_PORT} - if the main "
+                "API answers, the problem is probably the network path, which a reset "
+                f"cannot fix: {exc}"
+            ) from exc
+        raw = _read_all(response)
+        if response.status == 429:
+            raise ClientError("reset refused: cooldown active, a restart was already issued recently")
+        if response.status != 202:
+            raise ClientError(f"reset returned HTTP {response.status}: {raw.decode('utf-8', 'replace')[:300]}")
+        deadline = time.monotonic() + wait_seconds
+        while time.monotonic() < deadline:
+            time.sleep(poll_interval)
+            try:
+                ready = self._json("GET", "/health/ready")
+            except ClientError:
+                continue
+            if ready.get("status") == "ready":
+                return {"status": "recovered", "ready": ready}
+        return {"status": "restart_issued_not_yet_ready", "waited_seconds": wait_seconds}
 
     def schema(self) -> dict[str, Any]:
         value = self._json("GET", "/v1/h3/schema")
@@ -409,6 +450,8 @@ def build_parser() -> argparse.ArgumentParser:
     download.add_argument("handle_id")
     download.add_argument("kind", choices=("video", "mask"))
     download.add_argument("destination")
+    reset = commands.add_parser("reset", help="out-of-band API restart when the service is poisoned or wedged")
+    reset.add_argument("--wait-seconds", type=float, default=300.0)
     return parser
 
 
@@ -439,6 +482,8 @@ def main(argv: list[str] | None = None) -> int:
             raise ClientError(f"expected exactly one {args.kind} artifact on handle {args.handle_id}")
         path = client.download(artifacts[0], args.destination)
         result = {"path": str(path), "artifact": artifacts[0]}
+    elif args.command == "reset":
+        result = client.reset(wait_seconds=args.wait_seconds)
     else:
         raise AssertionError(args.command)
     _print_json(result)

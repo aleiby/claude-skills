@@ -143,6 +143,34 @@ length. Do not pad a locked-off shot to 500 words.
 - Cancel only with `cancel HANDLE_ID`. Cancellation drops that handle's
   interest and may not stop shared work another handle still wants.
 
+## Service health and recovery
+
+The service distinguishes its failure classes; diagnose before acting, and
+never resubmit as a recovery step — handles are durable and survive every
+class below.
+
+1. **Readiness 503 with `checks.worker: "cuda_poisoned"`.** A masking
+   failure poisoned the API process's GPU context; the worker durably
+   failed that one attempt and refuses further GPU work. A watchdog on the
+   host restarts the API within ~3 minutes — poll readiness for the
+   503→200 transition, then `wait` your handles as normal. To skip the
+   wait: `python3 "$CLIENT" reset`.
+2. **Port 8191 accepts TCP but every request hangs, liveness included.**
+   The API process is wedged (stuck in driver teardown); it cannot report
+   or heal itself, and the host watchdog deliberately leaves what it
+   cannot identify. This is exactly what `python3 "$CLIENT" reset` is for:
+   it calls a separate reset listener on port 8192 that restarts the API
+   task (never ComfyUI), then polls readiness to green. Resets inside the
+   300-second cooldown return an error instead of flapping.
+3. **Nothing answers on 8191 or 8192.** The break is the network path or
+   the host itself, and no reset can fix it — check your own Wi-Fi/Eero
+   path before escalating. A service that is green locally while your
+   requests hang has happened (2026-08-19) and looked identical to a
+   wedge from the client side.
+
+After any recovery, poll or `wait` the handles you already hold; work that
+was queued survives restarts, and completed work is waiting for download.
+
 ## Quick reference
 
 | Goal | Command |
@@ -156,6 +184,7 @@ length. Do not pad a locked-off shot to 500 words.
 | Wait to terminal state | `python3 "$CLIENT" wait HANDLE_ID` |
 | Cancel interest | `python3 "$CLIENT" cancel HANDLE_ID` |
 | Fetch verified output | `python3 "$CLIENT" download HANDLE_ID video OUTPUT.mp4` |
+| Recover poisoned/wedged service | `python3 "$CLIENT" reset` |
 
 ## Common mistakes
 
