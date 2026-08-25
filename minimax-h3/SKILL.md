@@ -149,10 +149,19 @@ The service distinguishes its failure classes; diagnose before acting, and
 never resubmit as a recovery step — handles are durable and survive every
 class below.
 
-1. **Readiness 503 with `checks.worker: "cuda_poisoned"`.** A masking
-   failure poisoned the API process's GPU context; the worker durably
-   failed that one attempt and refuses further GPU work. A watchdog on the
-   host restarts the API within ~3 minutes — poll readiness for the
+0. **A masking-phase failure on one attempt is just a failed attempt.**
+   Since 2026-08-24 masking runs in an isolated child process on the host,
+   so a masking `AcceleratorError` no longer poisons the service or dooms
+   subsequent renders — resubmit that line and continue. **The earlier
+   circuit-breaker rule ("first masking AcceleratorError = abort the
+   fleet") is obsolete**; only repeated back-to-back masking failures
+   warrant stopping, and those indicate something new, not the historical
+   poisoning class.
+1. **Readiness 503 with `checks.worker: "cuda_poisoned"`.** Historical
+   failure mode (five incidents 2026-08-11→18), cured by the masking
+   isolation above and expected not to recur; the detection and recovery
+   machinery remain as defense-in-depth. If it ever appears: a watchdog on
+   the host restarts the API within ~3 minutes — poll readiness for the
    503→200 transition, then `wait` your handles as normal. To skip the
    wait: `python3 "$CLIENT" reset`.
 2. **Port 8191 accepts TCP but every request hangs, liveness included.**
